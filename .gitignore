@@ -1,0 +1,25 @@
+# Vercel
+.vercel
+
+# Environment / secrets — never commit these
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Supabase CLI scratch files (machine-generated, not source)
+supabase/.temp/
