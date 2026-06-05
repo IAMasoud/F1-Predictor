@@ -72,7 +72,7 @@ const LOC_TO_CIRCUIT = {
 
 // 2026 F1 calendar — circuit_id → round number (must match PWA's BASE_UPCOMING.round)
 const CIRCUIT_TO_ROUND_2026 = {
-  albert_park:1, shanghai:2, suzuka:3, sakhir:4, jeddah:5,  // placeholder if these change
+  albert_park:1, shanghai:2, suzuka:3, miami:4,
   villeneuve:5, monaco:6, catalunya:7, red_bull_ring:8, silverstone:9,
   spa:10, hungaroring:11, zandvoort:12, monza:13, ifema_madrid:14,
   baku:15, marina_bay:16, americas:17, rodriguez:18, interlagos:19,

@@ -2400,7 +2400,7 @@ function setTab(t){
     liveRaceRefreshInterval = setInterval(() => {
       const r2 = (displayRaces.length ? displayRaces : (upcomingRaces.length ? upcomingRaces : BASE_UPCOMING))[selectedIdx];
       const ll = getLiveSessionLabel(r2);
-      if(ll && !liveRaceSessKey) renderLiveLocked(ll);
+      if(ll && !liveRaceSessKey) { renderLiveLocked(ll); refreshLivePositions(); }
       else fetchLiveRace();
     }, 30000);
   }
@@ -2746,7 +2746,7 @@ async function refreshLivePositions(){
 
   // 0. Supabase first — the live bridge writes here every 5 seconds during races
   try {
-    const sbSessions = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&year=eq.2026&order=fetched_at.desc&limit=5`);
+    const sbSessions = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.2026&order=fetched_at.desc&limit=10`);
     if(sbSessions?.length){
       // Prefer Race grid if available, else most recent
       const raceRow = sbSessions.find(s => s.session_name === 'Race') || sbSessions[0];
