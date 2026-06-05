@@ -1995,8 +1995,10 @@ function scheduleSessionDataRetry(race){
 }
 
 function hardRefresh(){
-  // Clear cache so fresh data is fetched
+  // Clear sessionStorage Jolpica cache
   try{ Object.keys(sessionStorage).filter(k=>k.startsWith('f1_')).forEach(k=>sessionStorage.removeItem(k)); }catch(e){}
+  // Clear in-memory OpenF1 cache so every endpoint re-fetches fresh data
+  Object.keys(of1Cache).forEach(k => delete of1Cache[k]);
   lastPrediction=null;
   $('podiumWrap').style.display='none';
   loadData();
@@ -4074,6 +4076,14 @@ async function autoFetchSessions(){
   const races = (displayRaces.length ? displayRaces : (upcomingRaces.length ? upcomingRaces : BASE_UPCOMING));
   const race  = races[selectedIdx] || races[0];
   if(!race){ $('fetchStatus').textContent='No race selected.'; return; }
+
+  // Clear cached meeting/session/position data for this race so we get fresh results.
+  // Season-level data (tyre stints, FP1 maps) is left in cache to avoid unnecessary calls.
+  Object.keys(of1Cache).filter(k =>
+    k.includes('/meetings?') || k.includes('/sessions?') ||
+    k.includes('/position?') || k.includes('/drivers?') ||
+    k.includes('/stints?')   || k.includes('/race_control?')
+  ).forEach(k => delete of1Cache[k]);
 
   // ── IMMEDIATE PRE-RENDER ──
   // Render chips with the correct sprint/non-sprint layout RIGHT NOW based on the race's
