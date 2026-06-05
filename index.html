@@ -2914,13 +2914,17 @@ async function runMidRacePrediction(){
     return d ? `${o.abbr} ${d.name} (${teamName(d.team)}) ${d.pts}pts season` : `${o.abbr}`;
   }).join('\n');
 
+  const priorPredBlock = lastPrediction?.top10?.length
+    ? `\n═══ PRE-RACE AI PREDICTION (generated before lights out) ═══\n${lastPrediction.top10.map((a,i)=>`P${i+1}: ${a}`).join('\n')}${lastPrediction.reasoning ? `\nOriginal reasoning: ${lastPrediction.reasoning}` : ''}\n\nIn your response, explicitly note which positions have changed vs this pre-race prediction and the key reasons why.\n`
+    : '';
+
   const prompt = `You are an expert F1 race strategist. The ${race.name} is LIVE right now.
 
 ═══ RACE STATE ═══
 Circuit: ${race.circuit}
 Lap: ${curLap} of ${totalLaps} (${racePct}% complete, ${lapsLeft} laps remaining)
 ${lapsLeft < 10 ? '⚠ LATE-RACE PHASE — positions are largely set unless major incidents.' : lapsLeft < 25 ? 'MID-LATE PHASE — final pit stops likely done, watch for tyre cliff.' : 'EARLY-MID PHASE — pit strategies still in flux, undercuts/overcuts critical.'}
-
+${priorPredBlock}
 ═══ CURRENT ON-TRACK POSITIONS (these are the ONLY drivers still racing) ═══
 ${currentPosLines}
 
@@ -2949,7 +2953,7 @@ Be DATA-DRIVEN. Don't just copy the current order — reason about who is likely
 Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track list above):
 {
   "top10": ["VER", "NOR", "HAM", "..."],
-  "reasoning": "Brief 2-3 sentence explanation of the key factors driving your prediction.",
+  "reasoning": "2-3 sentences covering key factors AND (if a pre-race prediction was provided) what changed vs that prediction and why.",
   "confidence": 75,
   "keyMovers": [
     {"abbr": "HAM", "movement": "+2", "reason": "Fresh tyres after late stop"},
