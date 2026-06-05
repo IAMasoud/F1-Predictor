@@ -68,10 +68,10 @@ const DRIVER_STANDINGS = [
 
 const COMPLETED_RESULTS = [
   { round:'1',  raceName:'Australian GP',     circuitId:'albert_park', results:['russell','antonelli','leclerc','hamilton','norris','max_verstappen','bearman','lindblad','bortoleto','gasly'] },
-  { round:'2S', raceName:'Chinese GP Sprint', circuitId:'shanghai',    results:['russell','leclerc','hamilton','norris','antonelli','piastri','lawson','bearman'] },
+  { round:'2S', raceName:'Chinese GP Sprint', circuitId:'shanghai',    results:['russell','leclerc','hamilton','norris','antonelli','piastri','lawson','bearman','max_verstappen','ocon'] },
   { round:'2',  raceName:'Chinese GP',        circuitId:'shanghai',    results:['antonelli','russell','hamilton','leclerc','bearman','gasly','lawson','hadjar','sainz','colapinto'] },
   { round:'3',  raceName:'Japanese GP',       circuitId:'suzuka',      results:['antonelli','piastri','leclerc','russell','norris','hamilton','gasly','max_verstappen','lawson','ocon'] },
-  { round:'4S', raceName:'Miami GP Sprint',   circuitId:'miami',       results:['norris','piastri','leclerc','russell','max_verstappen','antonelli','hamilton','gasly'] },
+  { round:'4S', raceName:'Miami GP Sprint',   circuitId:'miami',       results:['norris','piastri','leclerc','russell','max_verstappen','antonelli','hamilton','gasly','hadjar','colapinto'] },
   { round:'4',  raceName:'Miami GP',          circuitId:'miami',       results:['antonelli','norris','piastri','russell','max_verstappen','hamilton','colapinto','leclerc','sainz','albon'] },
 ];
 

@@ -19,12 +19,12 @@ const CALENDAR_2026 = [
   { round:12, circuitId:'zandvoort',   location:'Zandvoort',  raceDate:'2026-08-23', sprint:true  },
   { round:13, circuitId:'monza',       location:'Monza',      raceDate:'2026-09-06', sprint:false },
   { round:14, circuitId:'ifema_madrid',location:'Madrid',     raceDate:'2026-09-13', sprint:false },
-  { round:15, circuitId:'baku',        location:'Baku',       raceDate:'2026-09-27', sprint:false },
-  { round:16, circuitId:'marina_bay',  location:'Singapore',  raceDate:'2026-10-04', sprint:true  },
-  { round:17, circuitId:'americas',    location:'Austin',     raceDate:'2026-10-18', sprint:false },
-  { round:18, circuitId:'rodriguez',   location:'Mexico City',raceDate:'2026-10-25', sprint:false },
+  { round:15, circuitId:'baku',        location:'Baku',       raceDate:'2026-09-26', sprint:false },
+  { round:16, circuitId:'marina_bay',  location:'Singapore',  raceDate:'2026-10-11', sprint:true  },
+  { round:17, circuitId:'americas',    location:'Austin',     raceDate:'2026-10-25', sprint:false },
+  { round:18, circuitId:'rodriguez',   location:'Mexico City',raceDate:'2026-11-01', sprint:false },
   { round:19, circuitId:'interlagos',  location:'São Paulo',  raceDate:'2026-11-08', sprint:false },
-  { round:20, circuitId:'las_vegas',   location:'Las Vegas',  raceDate:'2026-11-22', sprint:false },
+  { round:20, circuitId:'las_vegas',   location:'Las Vegas',  raceDate:'2026-11-21', sprint:false },
   { round:21, circuitId:'losail',      location:'Lusail',     raceDate:'2026-11-29', sprint:false },
   { round:22, circuitId:'yas_marina',  location:'Abu Dhabi',  raceDate:'2026-12-06', sprint:false },
 ];
@@ -72,13 +72,13 @@ const ERGAST_TO_ABBR: Record<string, string> = {
   colapinto:       'COL',
   sainz:           'SAI',
   albon:           'ALB',
-  doohan:          'DOO',
   bortoleto:       'BOR',
   hulkenberg:      'HUL',
   stroll:          'STR',
-  drugovich:       'DRU',
   lindblad:        'LIN',
-  crawford:        'CRA',
+  alonso:          'ALO',
+  bottas:          'BOT',
+  perez:           'PER',
 };
 
 // ─── SCORING ──────────────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ Deno.serve(async () => {
   const recentRaces = CALENDAR_2026.filter(race => {
     const raceDate = new Date(race.raceDate);
     const diffHrs  = (now.getTime() - raceDate.getTime()) / (1000 * 60 * 60);
-    return diffHrs >= 3 && diffHrs <= 168; // 3h → 7 days after race
+    return diffHrs >= 3 && diffHrs <= 336; // 3h → 14 days after race (forgiving if a cron run is missed)
   });
 
   for (const race of recentRaces) {
@@ -227,32 +227,35 @@ Deno.serve(async () => {
 
     for (const { label, isSprint, predType } of sessionTypes) {
       try {
-        // ── 1. Find prediction in Supabase ───────────────────────────────────
-        const { data: pred, error: predErr } = await supabase
+        // ── 1. Find ALL prediction snapshots in Supabase ─────────────────────
+        // We now save one snapshot per stage (beforeQuali, afterQuali, final…),
+        // so multiple rows can match. .maybeSingle() THROWS on >1 row, so we
+        // must select the full list and score every unscored snapshot.
+        const { data: preds, error: predErr } = await supabase
           .from('predictions')
           .select('id, prediction, accuracy')
           .eq('circuit_id', race.circuitId)
           .eq('round', race.round)
-          .eq('pred_type', predType)
-          .maybeSingle();
+          .eq('pred_type', predType);
 
         if (predErr) {
           results.push(`DB error for ${race.location} ${label}: ${predErr.message}`);
           continue;
         }
 
-        if (!pred) {
+        if (!preds?.length) {
           results.push(`No prediction found: ${race.location} ${label} — skipping`);
           continue;
         }
 
-        // ── 2. Skip if already scored ────────────────────────────────────────
-        if (pred.accuracy !== null && pred.accuracy !== undefined) {
-          results.push(`Already scored: ${race.location} ${label} (${pred.accuracy}%)`);
+        // ── 2. Skip if every snapshot is already scored ──────────────────────
+        const unscored = preds.filter((p: any) => p.accuracy === null || p.accuracy === undefined);
+        if (!unscored.length) {
+          results.push(`Already scored: ${race.location} ${label} (${preds.length} snapshot(s))`);
           continue;
         }
 
-        // ── 3. Fetch actual results ──────────────────────────────────────────
+        // ── 3. Fetch actual results (once for all snapshots) ─────────────────
         let actualResults: string[] | null = null;
 
         // Try Jolpica first (official Ergast data)
@@ -268,44 +271,49 @@ Deno.serve(async () => {
           continue;
         }
 
-        // ── 4. Parse predicted order ─────────────────────────────────────────
-        let predictedOrder: string[] = [];
-        try {
-          const p = pred.prediction;
-          if (Array.isArray(p)) {
-            predictedOrder = p.map((x: any) =>
-              typeof x === 'string' ? x.toUpperCase() : (x.abbr ?? x.driverId ?? '').toUpperCase()
-            );
-          } else if (p?.top10) {
-            predictedOrder = p.top10.map((x: any) =>
-              typeof x === 'string' ? x.toUpperCase() : (x.abbr ?? x.driverId ?? '').toUpperCase()
-            );
-          } else if (typeof p === 'string') {
-            // Plaintext fallback — extract 3-letter abbreviations in order
-            const matches = (p as string).match(/\b[A-Z]{3}\b/g) ?? [];
-            predictedOrder = [...new Set(matches)];
+        // ── 4-6. Parse, score and patch EACH unscored snapshot ───────────────
+        let scoredCount = 0;
+        for (const pred of unscored) {
+          let predictedOrder: string[] = [];
+          try {
+            const p = pred.prediction;
+            if (Array.isArray(p)) {
+              predictedOrder = p.map((x: any) =>
+                typeof x === 'string' ? x.toUpperCase() : (x.abbr ?? x.driverId ?? '').toUpperCase()
+              );
+            } else if (p?.top10) {
+              predictedOrder = p.top10.map((x: any) =>
+                typeof x === 'string' ? x.toUpperCase() : (x.abbr ?? x.driverId ?? '').toUpperCase()
+              );
+            } else if (typeof p === 'string') {
+              // Plaintext fallback — extract 3-letter abbreviations in order
+              const matches = (p as string).match(/\b[A-Z]{3}\b/g) ?? [];
+              predictedOrder = [...new Set(matches)];
+            }
+          } catch {
+            results.push(`Could not parse prediction ${pred.id} for ${race.location} ${label}`);
+            continue;
           }
-        } catch {
-          results.push(`Could not parse prediction for ${race.location} ${label}`);
-          continue;
+
+          const accuracy = scoreTop10(predictedOrder, actualResults);
+
+          const { error: updateErr } = await supabase
+            .from('predictions')
+            .update({
+              actual_results: actualResults,
+              accuracy:       accuracy,
+            })
+            .eq('id', pred.id);
+
+          if (updateErr) {
+            results.push(`Update failed: ${race.location} ${label} #${pred.id} — ${updateErr.message}`);
+          } else {
+            scoredCount++;
+          }
         }
 
-        // ── 5. Score ─────────────────────────────────────────────────────────
-        const accuracy = scoreTop10(predictedOrder, actualResults);
-
-        // ── 6. Patch Supabase ─────────────────────────────────────────────────
-        const { error: updateErr } = await supabase
-          .from('predictions')
-          .update({
-            actual_results: actualResults,
-            accuracy:       accuracy,
-          })
-          .eq('id', pred.id);
-
-        if (updateErr) {
-          results.push(`Update failed: ${race.location} ${label} — ${updateErr.message}`);
-        } else {
-          results.push(`Scored: ${race.location} ${label} → ${accuracy}% accuracy`);
+        if (scoredCount) {
+          results.push(`Scored: ${race.location} ${label} → ${scoredCount} snapshot(s) updated`);
         }
 
       } catch (e: any) {
