@@ -4737,11 +4737,20 @@ function renderArchSnapshot(parsed, race){
 /* Triggered by the visible Force Fresh button on the Predict tab.
    Bypasses cache, pulls latest from Supabase, regenerates AI prediction. */
 function forceFreshPrediction(){
+  // Guard: if the race itself is live, force-regenerating uses the pre-race prompt
+  // (no live positions) and overwrites the saved pre-race snapshot — wrong tool.
+  const races = (displayRaces.length ? displayRaces : (upcomingRaces.length ? upcomingRaces : BASE_UPCOMING));
+  const race = races[selectedIdx] || races[0];
+  if(race && getLiveSessionLabel(race) === 'Grand Prix'){
+    const go = confirm(
+      'The race is currently live.\n\n' +
+      'Force Regenerate runs the pre-race AI prompt — it has no knowledge of current lap positions and will OVERWRITE your saved pre-race prediction.\n\n' +
+      'For a mid-race update, use "Generate Live Prediction" in the Live tab instead.\n\n' +
+      'Force Regenerate anyway?'
+    );
+    if(!go) return;
+  }
   window._forceFreshPrediction = true;
-  // Determine sprint vs race based on whether sprint button is visible
-  const sb = $('sprintBtn');
-  const isSprintWeekend = sb && getComputedStyle(sb).display !== 'none';
-  // Use the same predictionMode that's currently active
   const mode = (predictionMode === 'sprint') ? 'sprint' : 'race';
   console.log('[force-fresh] Bypassing cache, fetching latest Supabase data, mode:', mode);
   runAIPrediction(mode);
