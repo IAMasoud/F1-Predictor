@@ -1800,6 +1800,21 @@ let completedRaces = [...BASE_RESULTS];
 let upcomingRaces = [...BASE_UPCOMING];
 let qualifyingGrid = [];    // main race grid
 let sprintQualiGrid = [];   // sprint qualifying grid
+
+/* Pick the best Supabase session row for a given session_name.
+   Rule: prefer the NEWEST row that is also COMPLETE, so a partial/half-written
+   bridge burst (e.g. bridge opened for <5 min) can never overwrite a full,
+   official result. Falls back to newest-overall if none are "complete" yet
+   (e.g. early in a live session when only partial data exists).
+   `rows` must be ordered fetched_at.desc (newest first). */
+const GRID_COMPLETE_MIN = 18; // a full F1 grid is ~20; 18+ counts as complete
+function pickBestSessionRow(rows, sessionName){
+  const matches = (rows||[]).filter(r => r.session_name === sessionName && r.grid_data?.length);
+  if(!matches.length) return null;
+  // rows are newest-first; first complete one wins
+  const complete = matches.find(r => r.grid_data.length >= GRID_COMPLETE_MIN);
+  return complete || matches[0]; // fall back to newest-overall if nothing complete yet
+}
 let sprintResult = [];      // sprint race result
 let currentSessions = [];   // latest OpenF1 sessions for the selected race (for chip taps)
 let lastPrediction = null;
@@ -3116,12 +3131,13 @@ async function ensureFreshDataFromSupabase(race){
     console.log('[fresh] Supabase returned', sb?.length || 0, 'rows for', race.circuitId);
     if(!sb?.length) return;
 
+    // For each session, take the NEWEST COMPLETE grid (partial bridge bursts
+    // can't beat a full result). sb is already ordered fetched_at.desc.
     const seen = {};
-    for(const row of sb){
-      if(seen[row.session_name]) continue; // already took the freshest for this session
-      if(!row.grid_data?.length) continue;
-      seen[row.session_name] = row;
-    }
+    ['Sprint Qualifying','Qualifying','Sprint','Race'].forEach(name => {
+      const row = pickBestSessionRow(sb, name);
+      if(row) seen[name] = row;
+    });
     window._lastDataSources = {};
     const ageSec = (ts) => Math.round((Date.now() - new Date(ts).getTime()) / 1000);
 
@@ -4110,7 +4126,7 @@ async function autoFetchSessions(){
   try {
     // ── Step 1: Check Supabase sessions table (synced every 30 min by Edge Function) ──
     const sbSessions = await sbGet(
-      `sessions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&year=eq.2026`
+      `sessions?circuit_id=eq.${race.circuitId}&year=eq.2026&order=fetched_at.desc&limit=50`
     );
 
     if(sbSessions && sbSessions.length > 0){
@@ -4127,8 +4143,8 @@ async function autoFetchSessions(){
 
       const fetched = [];
 
-      // Qualifying grid
-      const sbQ = sbSessions.find(s => s.session_name === 'Qualifying');
+      // Qualifying grid — newest COMPLETE grid wins (ignores partial bridge bursts)
+      const sbQ = pickBestSessionRow(sbSessions, 'Qualifying');
       if(sbQ?.grid_data?.length){
         qualifyingGrid = sbQ.grid_data.map((g, i) => ({
           driverId: drivers.find(x => x.abbr === g.abbr)?.driverId || g.abbr,
@@ -4141,8 +4157,8 @@ async function autoFetchSessions(){
         setMode('post');
       }
 
-      // Sprint Qualifying grid
-      const sbSQ = sbSessions.find(s => s.session_name === 'Sprint Qualifying' || s.session_name === 'Sprint Shootout');
+      // Sprint Qualifying grid — newest COMPLETE grid wins
+      const sbSQ = pickBestSessionRow(sbSessions, 'Sprint Qualifying') || pickBestSessionRow(sbSessions, 'Sprint Shootout');
       if(sbSQ?.grid_data?.length){
         sprintQualiGrid = sbSQ.grid_data.map((g, i) => ({
           driverId: drivers.find(x => x.abbr === g.abbr)?.driverId || g.abbr,
@@ -4154,8 +4170,8 @@ async function autoFetchSessions(){
         fetched.push('Sprint Qualifying');
       }
 
-      // Race result → auto-score AI vs Reality
-      const sbR = sbSessions.find(s => s.session_name === 'Race');
+      // Race result → auto-score AI vs Reality — newest COMPLETE grid wins
+      const sbR = pickBestSessionRow(sbSessions, 'Race');
       if(sbR?.grid_data?.length){
         const actualIds = sbR.grid_data.map(g =>
           drivers.find(x => x.abbr === g.abbr)?.driverId || g.abbr
