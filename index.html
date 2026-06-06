@@ -2382,6 +2382,11 @@ function setTab(t){
     clearInterval(liveRaceRefreshInterval);
     liveRaceRefreshInterval = null;
   }
+  // Clear pit auto-refresh when switching away from the Pits tab
+  if(t!=='pits' && pitRefreshInterval){
+    clearInterval(pitRefreshInterval);
+    pitRefreshInterval = null;
+  }
   if(t==='pred'){
     const _races = (displayRaces.length ? displayRaces : (upcomingRaces.length ? upcomingRaces : BASE_UPCOMING));
     syncForceFreshBtn(_races[selectedIdx] || _races[0]);
@@ -2392,7 +2397,12 @@ function setTab(t){
     if(currentRaceSessKey && currentMeetingKey)
       renderLapChart(currentRaceSessKey, currentMeetingKey);
   }
-  if(t==='pits') fetchAndRenderPitStops(currentRaceSessKey, currentMeetingKey);
+  if(t==='pits'){
+    fetchAndRenderPitStops(currentRaceSessKey, currentMeetingKey);
+    // Auto-refresh every 30s so live pit counts update while a race runs
+    if(pitRefreshInterval) clearInterval(pitRefreshInterval);
+    pitRefreshInterval = setInterval(() => fetchAndRenderPitStops(currentRaceSessKey, currentMeetingKey), 30000);
+  }
   if(t==='hist'){ renderAccuracyOverview(); renderAIReportCard(); }
   if(t==='anlt'){
     renderConfidenceTrend();
@@ -2690,6 +2700,7 @@ RACE DAY WEATHER FORECAST:
 ${raceWeatherData
   ? `${raceWeatherData.icon} Temperature: ${raceWeatherData.hi}°C high / ${raceWeatherData.lo}°C low | Rain probability: ${raceWeatherData.rain}%${raceWeatherData.rain>=40?' — WET CONDITIONS LIKELY, significantly increases probability of safety cars, upsets and rain specialists (Hamilton, Alonso, Verstappen)':raceWeatherData.rain>=20?' — some rain risk, consider wet weather specialists':' — dry conditions expected'}`
   : 'Weather data unavailable.'}
+${raceWeatherChange ? `WEATHER CHANGE SINCE EARLIER: ${raceWeatherChange}. Factor in this SHIFT, not just the current value — a worsening forecast raises upset/safety-car risk; an improving one favours the established order.` : ''}
 
 CRITICAL RULES FOR YOUR PREDICTION:
 1. DO NOT default to Antonelli winning every race. He leads WDC but McLaren is closing fast. Assess on circuit merits.
@@ -2952,7 +2963,7 @@ ${dnfDrivers.join(', ')}
 
 ═══ ACTIVE DRIVER PACE CONTEXT (championship points for context only) ═══
 ${activePaceLines}
-
+${raceWeatherData ? `\n═══ WEATHER ═══\n${raceWeatherData.icon} ${raceWeatherData.hi}°C / rain ${raceWeatherData.rain}%${raceWeatherData.rain>=40?' — WET: expect safety cars, pit-strategy swings, and rain specialists climbing':raceWeatherData.rain>=20?' — intermittent rain risk':' — dry'}${raceWeatherChange ? `\nWEATHER CHANGE: ${raceWeatherChange}. Weigh the SHIFT — worsening conditions raise upset/SC risk.` : ''}\n` : ''}
 ═══ CRITICAL RULES ═══
 🚫 NEVER include any driver from the "DNF / RETIRED" list in your top10 — they are out of the race
 🚫 NEVER pick a driver who is not in the "CURRENT ON-TRACK POSITIONS" list above
@@ -4982,6 +4993,43 @@ const WX_CODES = {
   80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈',
 };
 
+/* Compares the current race-day forecast against a stored earlier reading and
+   builds a human-readable description of HOW the weather shifted (not just the
+   new value). Baseline is held ~6h so the delta stays meaningful across the
+   weekend. Result goes into both the pre-race and mid-race AI prompts. */
+let raceWeatherChange = null;
+function computeWeatherChange(circuitId, cur){
+  raceWeatherChange = null;
+  if(!circuitId || !cur) return;
+  try{
+    const key = 'wx_prev_' + circuitId;
+    const raw = localStorage.getItem(key);
+    const now = Date.now();
+    if(raw){
+      const prev = JSON.parse(raw);
+      const dRain = (cur.rain ?? 0) - (prev.rain ?? 0);
+      const dHi   = (cur.hi   ?? 0) - (prev.hi   ?? 0);
+      const hrs   = Math.max(1, Math.round((now - prev.ts) / 3600000));
+      const parts = [];
+      if(Math.abs(dRain) >= 15){
+        const dir   = dRain > 0 ? 'rose' : 'fell';
+        const trend = cur.rain >= 40 ? 'now WET LIKELY — boosts safety-car odds, upsets & rain specialists'
+                    : cur.rain >= 20 ? 'now some rain risk'
+                    : 'now trending dry';
+        parts.push(`Rain probability ${dir} ${prev.rain}% → ${cur.rain}% (${dRain>0?'+':''}${dRain}pts over ~${hrs}h) — ${trend}`);
+      }
+      if(Math.abs(dHi) >= 4){
+        parts.push(`Track-day high ${dHi>0?'up':'down'} ${prev.hi}°C → ${cur.hi}°C (affects tyre deg)`);
+      }
+      raceWeatherChange = parts.length ? parts.join('; ') : null;
+    }
+    // Refresh the baseline only when missing or stale (>6h) so deltas stay meaningful.
+    if(!raw || (now - JSON.parse(raw).ts) > 6 * 3600000){
+      localStorage.setItem(key, JSON.stringify({ rain: cur.rain, hi: cur.hi, lo: cur.lo, ts: now }));
+    }
+  }catch(e){ /* non-fatal */ }
+}
+
 async function fetchWeatherForecast(circuitId, raceDate){
   const coords = CIRCUIT_COORDS[circuitId];
   const card = $('weatherCard');
@@ -5015,7 +5063,7 @@ async function fetchWeatherForecast(circuitId, raceDate){
       const lo = Math.round(d.temperature_2m_min[i]);
       const rain = d.precipitation_probability_max[i]||0;
       const rainCol = rain>=60?'var(--red)':rain>=30?'var(--gold)':'#64a0ff';
-      if(isRaceDay) raceWeatherData = {rain, hi, lo, icon};
+      if(isRaceDay){ raceWeatherData = {rain, hi, lo, icon}; computeWeatherChange(circuitId, raceWeatherData); }
       html += `<div class="wx-day-cell${isRaceDay?' race-day':''}">
         <div class="wx-day-lbl">${isRaceDay?'🏁 RACE':dow}</div>
         <div class="wx-day-icon">${icon}</div>
@@ -5166,11 +5214,83 @@ function startScheduleCountdownTick(){
 const COMPOUND_COL = {SOFT:'#E10600',MEDIUM:'#FFD700',HARD:'#e8e8e8',INTERMEDIATE:'#00e676',WET:'#64a0ff',UNKNOWN:'#888'};
 const COMPOUND_LBL = {SOFT:'S',MEDIUM:'M',HARD:'H',INTERMEDIATE:'I',WET:'W',UNKNOWN:'?'};
 
+/* LIVE pit view from the bridge's Supabase data.
+   Shows all drivers: pit count + estimated next pit lap.
+   Returns true if it rendered (live data present), false to fall back to OpenF1. */
+async function renderLivePitStops(){
+  const el = $('pitsContent');
+  if(!el) return false;
+  const races = displayRaces.length ? displayRaces : (upcomingRaces.length ? upcomingRaces : BASE_UPCOMING);
+  const race = races[selectedIdx] || races[0];
+  if(!race) return false;
+  let rows;
+  try{
+    const sb = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.2026&order=fetched_at.desc&limit=10`);
+    rows = (sb||[]).find(s => s.session_name === 'Race') || (sb||[])[0];
+  }catch(e){ return false; }
+  // Only treat as "live pit data" if the bridge populated pit fields.
+  const grid = rows?.grid_data;
+  if(!grid?.length || !grid.some(g => g.pitCount !== undefined && g.lap !== undefined)) return false;
+
+  const ageSec = Math.round((Date.now() - new Date(rows.fetched_at).getTime())/1000);
+  const totalLaps = grid.find(g=>g.totalLaps)?.totalLaps || 0;
+  const curLap = Math.max(...grid.map(g=>g.lap||0), 0);
+  const isLive = ageSec < 600; // fresh within 10 min = treat as live
+
+  // Estimate next pit: typical stint length ~ (totalLaps / (stops+1)).
+  // Next pit ≈ lastPitLap + typicalStint, clamped. If no pits yet, use ~40% race distance.
+  const sorted = grid.slice().filter(g=>g.abbr && g.pos>0).sort((a,b)=>a.pos-b.pos);
+  const estStint = totalLaps ? Math.round(totalLaps / 2.4) : 22; // ~2-stop baseline
+
+  const ribbon = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <span style="font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:1px;font-size:13px;color:${isLive?'#ff4136':'var(--muted)'}">
+      ${isLive?'🔴 LIVE':'⏸ LAST KNOWN'} · Lap ${curLap}${totalLaps?'/'+totalLaps:''}</span>
+    <span style="font-size:11px;color:var(--dim)">bridge data ${ageSec}s ago</span>
+  </div>`;
+
+  const rowsHtml = sorted.map(g=>{
+    const drv = drivers.find(x=>x.abbr===g.abbr);
+    const col = drv ? teamCol(drv.team) : '#888';
+    const stops = g.pitCount || 0;
+    const lastPit = g.lastPitLap || 0;
+    let nextEst;
+    if(g.retired){ nextEst = '—'; }
+    else if(g.inPit){ nextEst = '<span style="color:var(--gold)">IN PIT</span>'; }
+    else {
+      const base = lastPit > 0 ? lastPit + estStint : Math.round((totalLaps||60)*0.38);
+      const next = Math.max(base, curLap+1);
+      nextEst = (totalLaps && next >= totalLaps) ? '<span style="color:#00e676">no more stops</span>' : ('~L'+next);
+    }
+    const dots = stops>0 ? '🔧'.repeat(Math.min(stops,4)) : '<span style="color:var(--dim)">—</span>';
+    return `<tr style="${g.retired?'opacity:.45':''}">
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:center;font-family:'Rajdhani',sans-serif;font-weight:700;color:var(--dim)">P${g.pos}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-family:'Rajdhani',sans-serif;font-weight:700;color:${col}">${g.abbr}</span>${g.retired?' <span style="font-size:9px;color:var(--red)">DNF</span>':''}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:center">${dots} <span style="color:var(--dim);font-size:11px">${stops}</span></td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:center;color:var(--dim);font-size:12px">${lastPit?('L'+lastPit):'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;font-family:'Rajdhani',sans-serif;font-weight:700">${nextEst}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = ribbon + `<div class="pit-table-wrap">
+    <div class="pit-table-header">Live Pit Tracker — all drivers</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr>
+        ${['Pos','Driver','Pits','Last','Next (est)'].map((h,i)=>`<th style="padding:7px 12px;text-align:${i>=2?(i===4?'right':'center'):(i===0?'center':'left')};font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border)">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div style="font-size:10px;color:var(--dim);padding:8px 12px">Next-pit is an estimate from stint length (~${estStint} laps) and last stop — not an official figure.</div>
+  </div>`;
+  return true;
+}
+
 async function fetchAndRenderPitStops(sessKey, meetingKey){
   const el = $('pitsContent');
   if(!el) return;
+  // Try LIVE bridge data first (works DURING a race; OpenF1 /pit is locked live).
+  try{ if(await renderLivePitStops()) return; }catch(e){ /* fall through */ }
   if(!sessKey){
-    el.innerHTML=`<div class="pit-empty"><div style="font-size:36px;margin-bottom:10px">🏁</div><div style="font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px">No Race Data Yet</div><div style="color:var(--dim)">Pit stop data becomes available after the race ends.</div></div>`;
+    el.innerHTML=`<div class="pit-empty"><div style="font-size:36px;margin-bottom:10px">🏁</div><div style="font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:6px">No Race Data Yet</div><div style="color:var(--dim)">Live pit tracking appears here when the bridge is running during a race. Full post-race detail loads after the session ends.</div></div>`;
     return;
   }
   el.innerHTML=`<div class="pit-empty">⏳ Loading pit stop data…</div>`;
@@ -6361,6 +6481,7 @@ const BASE_PENALTIES = [
    LIVE RACE TAB — interval reference
    ═══════════════════════════════════════════════ */
 let liveRaceRefreshInterval = null;
+let pitRefreshInterval = null;
 
 /* ═══════════════════════════════════════════════
    FETCH LIVE RACE

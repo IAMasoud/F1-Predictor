@@ -142,12 +142,20 @@ function mergeFeed(feedName, data) {
     Object.entries(lines).forEach(([num, t]) => {
       if (typeof t !== 'object') return;
       const prev = state.timing[num] || {};
+      const nowInPit = (t.InPit !== undefined) ? !!t.InPit : (prev.inPit || false);
+      const lap = t.NumberOfLaps || prev.lap || 0;
+      // Count a pit stop on the false→true transition (car ENTERS the pit lane).
+      let pitCount  = prev.pitCount || 0;
+      let lastPitLap = prev.lastPitLap || 0;
+      if (nowInPit && !prev.inPit) { pitCount += 1; lastPitLap = lap; }
       state.timing[num] = {
         position: parseInt(t.Position, 10) || prev.position || 99,
-        lap:      t.NumberOfLaps || prev.lap || 0,
+        lap,
         gap:      t.GapToLeader || prev.gap || '',
         retired:  !!t.Retired || !!t.Stopped || prev.retired || false,
-        inPit:    !!t.InPit,
+        inPit:    nowInPit,
+        pitCount,
+        lastPitLap,
       };
     });
   } else if (feedName === 'SessionInfo') {
@@ -228,6 +236,8 @@ async function flushToSupabase() {
       gap: t.gap,
       retired: t.retired,
       inPit: t.inPit,
+      pitCount: t.pitCount || 0,
+      lastPitLap: t.lastPitLap || 0,
     }))
     .filter(g => g.abbr && g.pos > 0 && g.pos < 99)
     .sort((a, b) => a.pos - b.pos);
@@ -254,7 +264,13 @@ async function flushToSupabase() {
     round:        state.session.round ? Number(state.session.round) : null,
     year:         state.session.year,
     session_name: sessionName,
-    grid_data:    grid.map(g => ({ pos: g.pos, abbr: g.abbr })),
+    // grid_data carries pit telemetry too (extra keys are ignored by older readers).
+    // total laps is stashed on each row to avoid needing a new DB column.
+    grid_data:    grid.map(g => ({
+      pos: g.pos, abbr: g.abbr,
+      lap: g.lap, inPit: g.inPit, pitCount: g.pitCount, lastPitLap: g.lastPitLap,
+      totalLaps: state.session.totalLaps || null,
+    })),
     source:       'f1-signalr-live',
     fetched_at:   new Date().toISOString(),
   };
