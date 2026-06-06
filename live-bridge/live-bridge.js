@@ -303,7 +303,10 @@ async function flushToSupabase() {
 // ─── Local HTTP server — lets the PWA fetch positions directly from localhost ─
 // This skips the Supabase round-trip when the PWA is on the same machine as
 // the bridge. CORS is fully open since this only listens on localhost.
+let _localServerStarted = false;
 function startLocalServer() {
+  if (_localServerStarted) return; // start once — survives reconnect/retry loops
+  _localServerStarted = true;
   const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -349,7 +352,11 @@ function startLocalServer() {
   server.listen(LOCAL_HTTP_PORT, '127.0.0.1', () => {
     log(`🌐 Local API: http://localhost:${LOCAL_HTTP_PORT}/positions`);
   });
-  server.on('error', e => log('⚠️  Local server error:', e.message));
+  server.on('error', e => {
+    // EADDRINUSE just means the server is already running from a prior start —
+    // not fatal, the existing one keeps serving. Only warn for other errors.
+    if (e.code !== 'EADDRINUSE') log('⚠️  Local server error:', e.message);
+  });
 }
 
 // ─── Main: connect and process messages ─────────────────────────────────
@@ -415,8 +422,10 @@ async function main() {
     log('⚠️  WebSocket error:', err.message);
   });
 
-  // Heartbeat ping every 30s to keep connection alive
-  setInterval(() => {
+  // Heartbeat ping every 30s to keep connection alive.
+  // Clear any prior heartbeat first so reconnects don't stack timers.
+  if (state.heartbeat) clearInterval(state.heartbeat);
+  state.heartbeat = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) ws.ping();
   }, 30000);
 }
