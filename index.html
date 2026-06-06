@@ -3060,6 +3060,7 @@ Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track 
       </div>`;
 
     $('midRaceStatus').innerHTML = `<span style="color:#00e676">✓ Live prediction generated · Lap ${curLap}/${totalLaps}</span>`;
+    showToast(`🔄 New prediction made — based on current positions (Lap ${curLap}${totalLaps?'/'+totalLaps:''})`, 'success', 4500);
   } catch(e) {
     console.error('Mid-race prediction error:', e);
     $('midRaceStatus').innerHTML = `<span style="color:var(--red)">✗ ${e.message || 'Failed to generate prediction'}</span>`;
@@ -3405,6 +3406,9 @@ function renderPrediction(parsed, race, useQ){
   const ps = $('predEmptyState'); if(ps) ps.style.display='none';
   unlockArchTab(); // a prediction now exists — enable the Predictions Archive tab
   setTab('pred');
+  // Reassure the user a fresh prediction was generated, and on what basis
+  showToast(useQ ? '✅ New prediction made — based on the latest qualifying grid'
+                 : '✅ New prediction made — based on current standings & form', 'success', 4500);
 
   // Podium
   const podiumOrder=[1,0,2];
