@@ -34,10 +34,15 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-// ─── F1 SignalR endpoints ───────────────────────────────────────────────
-const F1_BASE      = 'https://livetiming.formula1.com/signalr';
-const F1_WS_BASE   = 'wss://livetiming.formula1.com/signalr';
-const HUB          = '[{"name":"Streaming"}]';
+// ─── F1 SignalR CORE endpoints ──────────────────────────────────────────
+// F1 migrated from the legacy ASP.NET SignalR (/signalr) to modern SignalR
+// Core (/signalrcore) in 2026. The old /signalr/negotiate now returns 401;
+// /signalrcore works anonymously (no token needed). This matches how OpenF1
+// connects (via their br-g/fastf1-livetiming fork).
+const F1_NEGOTIATE = 'https://livetiming.formula1.com/signalrcore/negotiate';
+const F1_WS_CORE   = 'wss://livetiming.formula1.com/signalrcore';
+const F1_UA        = 'BestHTTP'; // F1's official client UA — required by their WAF
+const RS           = '\x1e';     // SignalR Core record separator (0x1e)
 const SUB_FEEDS    = [
   'TimingData',         // positions, lap times, gaps
   'DriverList',         // driver number → TLA mapping
@@ -79,35 +84,50 @@ const CIRCUIT_TO_ROUND_2026 = {
   las_vegas:20, losail:21, yas_marina:22,
 };
 
-// ─── Step 1: SignalR Negotiate ──────────────────────────────────────────
+// ─── Step 1: SignalR Core Negotiate ─────────────────────────────────────
+// Two-step like OpenF1: (1) OPTIONS preflight to grab the AWSALBCORS sticky
+// cookie, (2) POST negotiate to get the connectionToken. No auth token needed.
 async function negotiate() {
-  const url = `${F1_BASE}/negotiate?connectionData=${encodeURIComponent(HUB)}&clientProtocol=1.5`;
-  log('📡 Negotiating with F1 SignalR...');
-  const res = await fetch(url, {
+  log('📡 Negotiating with F1 SignalR Core...');
+
+  // (1) OPTIONS → AWSALBCORS cookie (CloudFront/ALB session stickiness)
+  let cookie = '';
+  try {
+    const optRes = await fetch(F1_NEGOTIATE, {
+      method: 'OPTIONS',
+      headers: { 'User-Agent': F1_UA },
+    });
+    const setCookie = optRes.headers.get('set-cookie') || '';
+    const m = setCookie.match(/AWSALBCORS=[^;]+/);
+    if (m) cookie = m[0];
+  } catch (e) {
+    dbg('OPTIONS preflight failed (continuing):', e.message);
+  }
+
+  // (2) POST negotiate
+  const res = await fetch(`${F1_NEGOTIATE}?negotiateVersion=1`, {
+    method: 'POST',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-      'Accept': 'application/json',
+      'User-Agent': F1_UA,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      ...(cookie ? { 'Cookie': cookie } : {}),
     },
   });
   if (!res.ok) throw new Error(`Negotiate failed: ${res.status} ${await res.text()}`);
   const data = await res.json();
   dbg('Negotiate response:', data);
-  return {
-    connectionToken: data.ConnectionToken,
-    cookie: res.headers.get('set-cookie') || '',
-  };
+  if (!data.connectionToken) throw new Error('Negotiate returned no connectionToken');
+  return { connectionToken: data.connectionToken, cookie };
 }
 
-// ─── Step 2: Connect via WebSocket ──────────────────────────────────────
+// ─── Step 2: Connect via SignalR Core WebSocket ─────────────────────────
 function connect(token, cookie) {
-  const wsUrl = `${F1_WS_BASE}/connect?transport=webSockets&clientProtocol=1.5` +
-    `&connectionToken=${encodeURIComponent(token)}` +
-    `&connectionData=${encodeURIComponent(HUB)}`;
-  log('🔌 Opening WebSocket...');
+  const wsUrl = `${F1_WS_CORE}?id=${encodeURIComponent(token)}`;
+  log('🔌 Opening WebSocket (signalrcore)...');
   const ws = new WebSocket(wsUrl, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-      'Cookie': cookie,
+      'User-Agent': F1_UA,
+      ...(cookie ? { 'Cookie': cookie } : {}),
     },
   });
   return ws;
@@ -371,45 +391,50 @@ async function main() {
 
   ws.on('open', () => {
     log('✅ WebSocket connected');
-    // Subscribe to feeds
-    ws.send(JSON.stringify({
-      H: 'Streaming',
-      M: 'Subscribe',
-      A: [SUB_FEEDS],
-      I: 1,
-    }));
-    log('📨 Subscribed to:', SUB_FEEDS.join(', '));
+    // SignalR Core handshake — declare the JSON protocol (terminated by 0x1e)
+    ws.send(JSON.stringify({ protocol: 'json', version: 1 }) + RS);
+    // Subscribe shortly after, once the handshake ack is processed
+    setTimeout(() => {
+      ws.send(JSON.stringify({
+        arguments: [SUB_FEEDS],
+        invocationId: '0',
+        target: 'Subscribe',
+        type: 1,
+      }) + RS);
+      log('📨 Subscribed to:', SUB_FEEDS.join(', '));
+    }, 500);
   });
 
+  // Process one decoded SignalR Core message object.
+  const handleCoreMsg = (m) => {
+    // type 3 = completion (the subscription SNAPSHOT — all feeds at once)
+    if (m.type === 3 && m.result) {
+      log('📦 Initial snapshot received');
+      Object.entries(m.result).forEach(([feed, data]) => {
+        if (feed.endsWith('.z') && typeof data === 'string') mergeFeed(feed.slice(0, -2), decompressZ(data));
+        else mergeFeed(feed, data);
+      });
+    }
+    // type 1 = invocation (live "feed" DELTAS during the session)
+    if (m.type === 1 && m.target === 'feed' && Array.isArray(m.arguments)) {
+      const [feedName, payload] = m.arguments;
+      if (!feedName) return;
+      if (feedName.endsWith('.z') && typeof payload === 'string') mergeFeed(feedName.slice(0, -2), decompressZ(payload));
+      else mergeFeed(feedName, payload);
+    }
+    // type 6 = keepalive ping from server — reply with a ping to stay alive
+    if (m.type === 6) {
+      try { ws.send(JSON.stringify({ type: 6 }) + RS); } catch (e) {}
+    }
+  };
+
   ws.on('message', (raw) => {
-    let msg;
-    try { msg = JSON.parse(raw.toString()); } catch (e) { return; }
-
-    // "R" = initial state dump (all current values)
-    if (msg.R) {
-      log('📦 Initial state received');
-      Object.entries(msg.R).forEach(([feed, data]) => {
-        if (feed.endsWith('.z') && typeof data === 'string') {
-          mergeFeed(feed.slice(0, -2), decompressZ(data));
-        } else {
-          mergeFeed(feed, data);
-        }
-      });
-    }
-
-    // "M" = incremental updates (array of {H, M, A})
-    if (Array.isArray(msg.M)) {
-      msg.M.forEach(m => {
-        if (m.M !== 'feed') return;
-        const [feedName, payload] = m.A || [];
-        if (!feedName) return;
-        if (feedName.endsWith('.z') && typeof payload === 'string') {
-          mergeFeed(feedName.slice(0, -2), decompressZ(payload));
-        } else {
-          mergeFeed(feedName, payload);
-        }
-      });
-    }
+    // SignalR Core frames multiple JSON objects separated by 0x1e
+    raw.toString().split(RS).filter(Boolean).forEach((part) => {
+      let m;
+      try { m = JSON.parse(part); } catch (e) { return; }
+      try { handleCoreMsg(m); } catch (e) { dbg('handleCoreMsg error:', e.message); }
+    });
   });
 
   ws.on('close', (code, reason) => {
@@ -422,12 +447,14 @@ async function main() {
     log('⚠️  WebSocket error:', err.message);
   });
 
-  // Heartbeat ping every 30s to keep connection alive.
-  // Clear any prior heartbeat first so reconnects don't stack timers.
+  // Heartbeat ping every 10s to keep connection alive (SignalR Core expects
+  // frequent keepalives). Clear any prior heartbeat so reconnects don't stack.
   if (state.heartbeat) clearInterval(state.heartbeat);
   state.heartbeat = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) ws.ping();
-  }, 30000);
+    if (ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 6 }) + RS); } catch (e) {}
+    }
+  }, 10000);
 }
 
 main().catch(err => {
