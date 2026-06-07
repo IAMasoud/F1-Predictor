@@ -4265,7 +4265,7 @@ async function autoFetchSessions(){
         $('sessionApplyStatus').textContent = '✓ Session data loaded from Supabase cloud';
         $('sessionApplyStatus').style.color = '#00e676';
         updateBanner();
-        showToast('☁ Session data loaded from cloud', 'success');
+        showToastOnce(`cloud:${race?.circuitId}:${fetched.join(',')}`, '☁ Session data loaded from cloud', 'success');
         notifyDataFetched(race?.name || 'Race');
         btn.disabled = false;
         btn.textContent = '🔄 Auto-fetch from OpenF1';
@@ -4387,7 +4387,7 @@ async function autoFetchSessions(){
         $('fetchStatus').innerHTML = `<span style="color:#00e676">✓ Loaded from Jolpica fallback: ${jolpicaFetched.join(' · ')}</span>`;
         unlockArchTab();
         updateBanner();
-        showToast('✓ Session data loaded from Jolpica', 'success');
+        showToastOnce(`jolpica:${race?.circuitId}:${jolpicaFetched.join(',')}`, '✓ Session data loaded from Jolpica', 'success');
       } else if(of1LiveLocked || of1RateLimited){
         // Both sources failed — schedule background retry for when OpenF1 unlocks
         scheduleSessionDataRetry(race);
@@ -4527,7 +4527,7 @@ async function autoFetchSessions(){
       $('sessionApplyStatus').textContent = '✓ Session data applied automatically';
       $('sessionApplyStatus').style.color = '#00e676';
       updateBanner();
-      showToast('✓ Session data loaded from OpenF1', 'success');
+      showToastOnce(`of1:${race?.circuitId}:${fetched.join(',')}`, '✓ Session data loaded from OpenF1', 'success');
       notifyDataFetched(race?.name || 'Race');
     } else {
       $('fetchStatus').innerHTML = '<span style="color:var(--gold)">⚠ Sessions found but none have finished yet — check back after each session ends.</span>';
@@ -5682,6 +5682,9 @@ async function pollLiveRace(){
   }catch(e){ console.warn('Live poll:', e.message); }
 }
 function startLivePolling(sessKey, label){
+  // IDEMPOTENT: autoFetchSessions calls this every 30s. If we're already polling
+  // this same session, do nothing — don't reset the interval or re-toast (spam).
+  const alreadyPolling = (liveRaceSessKey === sessKey && liveRaceInterval);
   liveRaceSessKey=sessKey;
   const banner=$('liveRaceBanner');
   if(banner){
@@ -5689,6 +5692,7 @@ function startLivePolling(sessKey, label){
     const lbl=banner.querySelector('#liveBannerLabel');
     if(lbl) lbl.textContent = (label||'Race') + ' is LIVE';
   }
+  if(alreadyPolling) return; // already running — skip re-init + toast
   pollLiveRace();
   if(liveRaceInterval) clearInterval(liveRaceInterval);
   liveRaceInterval=setInterval(pollLiveRace, 90000);
@@ -5978,6 +5982,15 @@ function renderQualifyingTimes(){
    TOAST NOTIFICATIONS
    ═══════════════════════════════════════════════ */
 const _recentToasts = new Map(); // msg → expireTs — dedupe identical toasts within window
+/* Show a toast at most ONCE per unique key (until the key changes).
+   Used for "session data loaded" which fires on every 30s auto-fetch cycle —
+   we only want to announce it when something actually changed. */
+let _toastOnceKey = null;
+function showToastOnce(key, msg, type='info', duration=3500){
+  if(_toastOnceKey === key) return;   // already shown for this state
+  _toastOnceKey = key;
+  showToast(msg, type, duration);
+}
 function showToast(msg, type='info', duration=3500){
   const wrap = $('toastWrap');
   if(!wrap) return;
@@ -7301,15 +7314,21 @@ async function initPushUI() {
   }
 }
 
-/* Local notification when session data is fetched */
+/* Local notification when session data is fetched.
+   DEDUPE: only fire ONCE per race — the auto-fetch/live loop runs every 30s,
+   so without this guard it would spam a native notification every cycle. */
+let _notifiedDataFor = null;
 function notifyDataFetched(raceName) {
   const prefs = getNotifPrefs();
   if(!prefs.dataFetched) return;
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(_notifiedDataFor === raceName) return; // already notified for this race
+  _notifiedDataFor = raceName;
   new Notification(`📋 ${raceName} — Data ready`, {
-    body: 'Session data loaded from OpenF1. Generate your AI prediction now.',
+    body: 'Session data loaded. Generate your AI prediction now.',
     icon: '/icons/icon-192.png',
-    tag: 'data-fetched',
+    tag: 'data-fetched',       // same tag = OS replaces rather than stacks
+    renotify: false,
   });
 }
 
