@@ -1317,35 +1317,46 @@
         <div style="font-family:'Rajdhani',sans-serif;font-size:17px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#fff">Mid-Race AI Update</div>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">
-        Watching live? Enter the current top 10 and current lap — the AI will re-predict the final result based on race dynamics, tyre strategy and remaining laps.
+        Watching live? Just tap the button — the AI pulls the current running order and lap from the live bridge and re-predicts the final result based on race dynamics, tyre strategy and remaining laps.
       </div>
 
-      <button onclick="autoFetchMidRaceFromF1()" type="button"
-        style="width:100%;background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.4);color:#00e676;padding:10px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;margin-bottom:12px">
-        🌐 Try Auto-Fetch from F1.com
-      </button>
-
-      <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Current Top 10 (driver codes, in order)</label>
-      <input type="text" id="midRacePositions" placeholder="e.g. VER, NOR, HAM, RUS, LEC, PIA, SAI, ALO, PER, BOT"
-        style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px">
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Current Lap</label>
-          <input type="number" id="midRaceLap" placeholder="e.g. 28" min="1" max="80"
-            style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px">
-        </div>
-        <div>
-          <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Total Laps</label>
-          <input type="number" id="midRaceTotalLaps" placeholder="e.g. 70" min="1" max="100"
-            style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px">
-        </div>
-      </div>
-
+      <!-- ONE-TAP live prediction: auto-pulls positions, current lap & total laps from the bridge -->
       <button onclick="runMidRacePrediction()" id="midRaceBtn"
-        style="width:100%;background:linear-gradient(135deg,#E10600,#a30400);color:#fff;border:none;padding:13px;border-radius:10px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;box-shadow:0 4px 14px rgba(225,6,0,.3)">
+        style="width:100%;background:linear-gradient(135deg,#E10600,#a30400);color:#fff;border:none;padding:15px;border-radius:10px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;box-shadow:0 4px 14px rgba(225,6,0,.3)">
         🔮 Generate Live Prediction
       </button>
+      <div style="font-size:11px;color:var(--dim);text-align:center;margin-top:8px">
+        Auto-uses live positions &amp; current lap from the bridge — just tap.
+      </div>
+
+      <!-- Advanced / manual override (hidden by default) -->
+      <div style="text-align:center;margin-top:10px">
+        <button type="button" onclick="(function(){var b=document.getElementById('midRaceManual');b.style.display=b.style.display==='none'?'block':'none';})()"
+          style="background:none;border:none;color:var(--dim);font-size:11px;letter-spacing:.5px;text-decoration:underline;cursor:pointer">
+          manual override
+        </button>
+      </div>
+      <div id="midRaceManual" style="display:none;margin-top:12px">
+        <button onclick="autoFetchMidRaceFromF1()" type="button"
+          style="width:100%;background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.4);color:#00e676;padding:9px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;margin-bottom:12px">
+          🌐 Try Auto-Fetch from F1.com
+        </button>
+        <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Current Top 10 (override)</label>
+        <input type="text" id="midRacePositions" oninput="this.dataset.manual='1'" placeholder="auto-filled from live data"
+          style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Current Lap</label>
+            <input type="number" id="midRaceLap" placeholder="auto" min="1" max="100"
+              style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Total Laps</label>
+            <input type="number" id="midRaceTotalLaps" placeholder="auto" min="1" max="100"
+              style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Rajdhani',sans-serif;font-size:14px">
+          </div>
+        </div>
+      </div>
 
       <div id="midRaceStatus" style="margin-top:10px;font-size:12px;text-align:center;color:var(--dim);min-height:16px"></div>
       <div id="midRaceResult" style="margin-top:14px"></div>
@@ -1808,6 +1819,15 @@ let completedRaces = [...BASE_RESULTS];
 let upcomingRaces = [...BASE_UPCOMING];
 let qualifyingGrid = [];    // main race grid
 let sprintQualiGrid = [];   // sprint qualifying grid
+
+// 2026 race distance (total laps) per circuit — used to auto-fill the live
+// prediction so the user never has to type it. Falls back to live feed if present.
+const CIRCUIT_TOTAL_LAPS = {
+  albert_park:58, shanghai:56, suzuka:53, miami:57, villeneuve:70, monaco:78,
+  catalunya:66, red_bull_ring:71, silverstone:52, spa:44, hungaroring:70,
+  zandvoort:72, monza:53, ifema_madrid:57, baku:51, marina_bay:62,
+  americas:56, rodriguez:71, interlagos:71, las_vegas:50, losail:57, yas_marina:58,
+};
 
 /* Pick the best Supabase session row for a given session_name.
    Rule: prefer the NEWEST row that is also COMPLETE, so a partial/half-written
@@ -2429,6 +2449,9 @@ function setTab(t){
     if(liveLabel && !liveRaceSessKey){
       // Session is live per schedule but we have no OpenF1 session key yet
       renderLiveLocked(liveLabel);
+      // Pull bridge positions IMMEDIATELY so _latestRaceGrid is fresh for a
+      // live prediction right away (don't wait for the 30s interval tick).
+      refreshLivePositions();
     } else {
       fetchLiveRace();
     }
@@ -2892,23 +2915,41 @@ async function runMidRacePrediction(){
     $('midRaceStatus').innerHTML = '<span style="color:var(--red)">Select a race first.</span>';
     return;
   }
-  // ── Auto-pull latest live-bridge positions from Supabase if input is empty or stale ──
-  // This way, when the bridge is feeding fresh data, the AI uses it automatically.
+  // ── Always pull the FRESHEST live-bridge positions from Supabase ──
+  // Every tap re-fetches and overwrites the input with the current live grid,
+  // so a mid-race prediction always reflects the latest running order — unless
+  // the user manually typed a custom order (tracked via data-manual flag).
   await ensureFreshDataFromSupabase(race);
-  if(window._latestRaceGrid?.length && !$('midRacePositions').value.trim()){
-    $('midRacePositions').value = window._latestRaceGrid.slice(0,10).map(g=>g.abbr).join(', ');
-    $('midRaceStatus').innerHTML = '<span style="color:#00e676">✓ Loaded latest positions from live bridge</span>';
+  const posEl = $('midRacePositions');
+  const userEdited = posEl?.dataset?.manual === '1' && posEl.value.trim();
+  if(window._latestRaceGrid?.length && !userEdited){
+    posEl.value = window._latestRaceGrid.slice(0,10).map(g=>g.abbr).join(', ');
+    const ds = window._lastDataSources?.['Race'];
+    const ageTxt = ds ? ` (${ds.age_sec}s old)` : '';
+    $('midRaceStatus').innerHTML = `<span style="color:#00e676">✓ Loaded latest live positions${ageTxt}</span>`;
   }
   const posInput = ($('midRacePositions').value || '').trim();
-  const curLap   = parseInt($('midRaceLap').value || '0', 10);
-  const totalLaps= parseInt($('midRaceTotalLaps').value || '0', 10);
+
+  // ── Auto-derive CURRENT LAP from the live grid (leader's lap), with manual override ──
+  let curLap = parseInt($('midRaceLap').value || '0', 10);
+  if(!curLap && window._latestRaceGrid?.length){
+    curLap = Math.max(...window._latestRaceGrid.map(g => g.lap || 0), 0);
+    if(curLap) $('midRaceLap').value = curLap;
+  }
+  // ── Auto-derive TOTAL LAPS: live feed → circuit map → manual ──
+  let totalLaps = parseInt($('midRaceTotalLaps').value || '0', 10);
+  if(!totalLaps){
+    const feedTotal = window._latestRaceGrid?.find(g => g.totalLaps)?.totalLaps;
+    totalLaps = feedTotal || CIRCUIT_TOTAL_LAPS[race.circuitId] || 0;
+    if(totalLaps) $('midRaceTotalLaps').value = totalLaps;
+  }
 
   if(!posInput){
-    $('midRaceStatus').innerHTML = '<span style="color:var(--red)">Enter the current top 10 driver codes.</span>';
+    $('midRaceStatus').innerHTML = '<span style="color:var(--red)">No live positions yet — make sure the race is running and the bridge is on.</span>';
     return;
   }
   if(!curLap || !totalLaps || curLap > totalLaps){
-    $('midRaceStatus').innerHTML = '<span style="color:var(--red)">Enter valid lap numbers (current must be ≤ total).</span>';
+    $('midRaceStatus').innerHTML = '<span style="color:var(--red)">Could not auto-detect laps. Tap "manual lap entry" below to set them.</span>';
     return;
   }
 
