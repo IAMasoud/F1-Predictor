@@ -955,7 +955,7 @@
 
   <!-- Header -->
   <div class="header">
-    <div><div class="logo">F1 <span class="version-pill">BETA 1.47</span></div><div class="logo-sub">AI Race Predictor · 2026</div></div>
+    <div><div class="logo">F1 <span class="version-pill" id="versionPill">BETA</span></div><div class="logo-sub">AI Race Predictor · 2026</div></div>
     <div class="htitle">Season Predictor</div>
     <div class="hright">
       <div class="ai-badge">✦ Powered by Llama 3.3 via OpenRouter</div>
@@ -1819,6 +1819,10 @@ let completedRaces = [...BASE_RESULTS];
 let upcomingRaces = [...BASE_UPCOMING];
 let qualifyingGrid = [];    // main race grid
 let sprintQualiGrid = [];   // sprint qualifying grid
+
+// App version shown in the header pill. Bump alongside the sw.js CACHE version
+// so the visible label never goes stale (it was hardcoded "1.47" before).
+const APP_VERSION = 'BETA 1.60';
 
 // 2026 race distance (total laps) per circuit — used to auto-fill the live
 // prediction so the user never has to type it. Falls back to live feed if present.
@@ -7110,6 +7114,13 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Sync the visible version pill to APP_VERSION on load (never hardcode in HTML)
+(function(){
+  const setPill = () => { const p = document.getElementById('versionPill'); if(p) p.textContent = APP_VERSION; };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setPill);
+  else setPill();
+})();
+
 /* ═══════════════════════════════════════════════
    PUSH NOTIFICATIONS + SETTINGS
    ═══════════════════════════════════════════════ */
@@ -7322,6 +7333,10 @@ function notifyDataFetched(raceName) {
   const prefs = getNotifPrefs();
   if(!prefs.dataFetched) return;
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  // Don't fire a NATIVE OS notification while the user is actively in the app —
+  // that's redundant spam (they can see the in-app toast). Native notifications
+  // are for when the app is closed (handled by the SW push handler).
+  if(document.visibilityState === 'visible') return;
   if(_notifiedDataFor === raceName) return; // already notified for this race
   _notifiedDataFor = raceName;
   new Notification(`📋 ${raceName} — Data ready`, {
