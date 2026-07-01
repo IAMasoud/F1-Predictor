@@ -1676,6 +1676,11 @@ const BASE_RESULTS = [
    results:['norris','piastri','leclerc','russell','max_verstappen','antonelli','hamilton','gasly','hadjar','colapinto']},
   {round:'4',  raceName:'Miami Grand Prix',          circuitId:'miami',       date:'2026-05-04',
    results:['antonelli','norris','piastri','russell','max_verstappen','hamilton','colapinto','leclerc','sainz','albon']},
+  // Canada Sprint — bridge wasn't running for this session; results verified
+  // from the scored sprint prediction's actual_results (Jolpica). Full races
+  // from Canada onward are merged from Supabase at load (mergeSupabaseRaceResults).
+  {round:'5S', raceName:'Canadian Grand Prix Sprint', circuitId:'villeneuve', date:'2026-05-23',
+   results:['russell','norris','antonelli','piastri','leclerc','hamilton','max_verstappen','lindblad','colapinto','sainz']},
 ];
 
 /* ── Full 2026 calendar — 22 races (Bahrain & Saudi Arabia cancelled due to regional conflict) ── */
@@ -1782,6 +1787,87 @@ function getLiveSessionLabel(race){
 const TC = {mercedes:'#27F4D2',ferrari:'#E8002D',mclaren:'#FF8000',red_bull:'#3671C6',williams:'#64C4FF',aston_martin:'#229971',alpine:'#FF87BC',racing_bulls:'#6692FF',audi:'#C8B820',haas:'#B6BABD',cadillac:'#CC0033'};
 const TN = {mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',williams:'Williams',aston_martin:'Aston Martin',alpine:'Alpine',racing_bulls:'Racing Bulls',audi:'Audi',haas:'Haas',cadillac:'Cadillac'};
 const F1P = [25,18,15,12,10,8,6,4,2,1];
+const SPRINT_P = [8,7,6,5,4,3,2,1]; // sprint race points (top 8)
+
+/* Compute live driver + constructor standings from completedRaces results.
+   This is the source of truth — keeps standings (and the AI prompt's form data)
+   current automatically after every race, instead of relying on hardcoded
+   BASE_DRIVERS (which goes stale) or real-world Ergast (wrong fictional season).
+   Sprint rounds (round ending in 'S') use SPRINT_P; full races use F1P. */
+function computeStandings(){
+  if(!Array.isArray(completedRaces) || !completedRaces.length) return;
+  // Seed name/team/abbr from BASE_DRIVERS; points recomputed from scratch.
+  const byId = {};
+  BASE_DRIVERS.forEach(d => { byId[d.driverId] = { ...d, pts: 0 }; });
+
+  completedRaces.forEach(race => {
+    const isSprint = String(race.round).endsWith('S');
+    const table = isSprint ? SPRINT_P : F1P;
+    (race.results || []).forEach((driverId, i) => {
+      if(!byId[driverId]) byId[driverId] = {
+        driverId, name: driverId, abbr: driverId.slice(0,3).toUpperCase(),
+        team: 'unknown', pts: 0, pos: 99,
+      };
+      byId[driverId].pts += (table[i] || 0);
+    });
+  });
+
+  // Rank drivers by points → assign positions
+  const ranked = Object.values(byId).sort((a,b) => b.pts - a.pts || a.name.localeCompare(b.name));
+  ranked.forEach((d,i) => d.pos = i+1);
+  drivers = ranked;
+
+  // Constructors = sum of their drivers' points
+  const teamPts = {};
+  ranked.forEach(d => { teamPts[d.team] = (teamPts[d.team] || 0) + d.pts; });
+  constructors = Object.entries(teamPts)
+    .filter(([t]) => t && t !== 'unknown')
+    .map(([t,pts]) => ({ name: teamName(t), pts }))
+    .sort((a,b) => b.pts - a.pts);
+}
+
+/* Pull finished-race results from Supabase (captured by the bridge / cron) and
+   fold them into completedRaces so standings include races beyond BASE_RESULTS
+   (e.g. Canada, Monaco, Spain). Idempotent: replaces any existing entry for the
+   same round. Converts driver abbreviations → driverIds. */
+async function mergeSupabaseRaceResults(){
+  try {
+    const rows = await sbGet('sessions?session_name=in.(Race,Sprint)&select=circuit_id,session_name,grid_data,fetched_at&order=fetched_at.desc');
+    if(!rows?.length) return;
+    const abbrToId = {};
+    BASE_DRIVERS.forEach(d => abbrToId[d.abbr] = d.driverId);
+
+    // newest-first; take the first (freshest) complete grid per circuit+session
+    const seen = new Set();
+    for(const row of rows){
+      const isSprint = row.session_name === 'Sprint';
+      const key = `${row.circuit_id}|${row.session_name}`;
+      if(seen.has(key)) continue;
+      const g = (row.grid_data || []).filter(x => x.abbr && x.pos);
+      if(g.length < 10) continue;                 // ignore partial grids
+      seen.add(key);
+
+      const meta = BASE_UPCOMING.find(u => u.circuitId === row.circuit_id);
+      if(!meta) continue;                          // unknown circuit → skip
+      const results = g.slice().sort((a,b)=>a.pos-b.pos)
+        .map(x => abbrToId[x.abbr] || x.abbr.toLowerCase());
+
+      const roundKey = isSprint ? `${meta.round}S` : String(meta.round);
+      const entry = {
+        round: roundKey,
+        raceName: meta.name + (isSprint ? ' Sprint' : ''),
+        circuitId: row.circuit_id, date: meta.date, results,
+      };
+      // Replace existing same-round entry, else append
+      const idx = completedRaces.findIndex(r => String(r.round) === roundKey);
+      if(idx >= 0) completedRaces[idx] = entry;
+      else completedRaces.push(entry);
+    }
+    // keep chronological-ish order (sprint 'nS' sorts just before race n via +0.5 offset)
+    const ord = r => parseFloat(String(r.round).replace('S','')) + (String(r.round).endsWith('S') ? -0.5 : 0);
+    completedRaces.sort((a,b) => ord(a) - ord(b));
+  } catch(e){ console.warn('mergeSupabaseRaceResults:', e.message); }
+}
 
 // Normalise any team name string → TC key
 const TEAM_ALIAS = {
@@ -1822,7 +1908,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.60';
+const APP_VERSION = 'BETA 1.61';
 
 // 2026 race distance (total laps) per circuit — used to auto-fill the live
 // prediction so the user never has to type it. Falls back to live feed if present.
@@ -2057,6 +2143,7 @@ function hardRefresh(){
    ═══════════════════════════════════════════════ */
 function loadData(){
   // Step 1: render hardcoded baseline immediately so app is usable right away
+  computeStandings(); // derive current standings from results before first render
   buildSelector();
   renderMetrics();
   renderHistory();
@@ -2149,6 +2236,13 @@ async function fetchLiveData(){
         }));
       }
     }
+
+    // Fold in finished-race results from Supabase (bridge/cron captured —
+    // Canada, Monaco, Spain, …), then recompute standings from them. This
+    // overrides the Ergast parse above (real-world data, wrong fictional season)
+    // and keeps standings + AI form data accurate after every race.
+    await mergeSupabaseRaceResults();
+    computeStandings();
 
     // Re-render with live data
     buildSelector();
