@@ -958,7 +958,7 @@
     <div><div class="logo">F1 <span class="version-pill" id="versionPill">BETA</span></div><div class="logo-sub">AI Race Predictor · 2026</div></div>
     <div class="htitle">Season Predictor</div>
     <div class="hright">
-      <div class="ai-badge">✦ Powered by Llama 3.3 via OpenRouter</div>
+      <div class="ai-badge">✦ Powered by Google Gemini</div>
       <button class="theme-btn" id="notifSettingsBtn" onclick="openNotifSettings()" title="Notification settings" style="position:relative">🔔<span id="notifDot" style="display:none;position:absolute;top:4px;right:4px;width:6px;height:6px;background:#00e676;border-radius:50%"></span></button>
       <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
       <button class="btn" onclick="hardRefresh()">↻ Refresh Data</button>
@@ -1582,7 +1582,7 @@ const AI_STEPS = [
   'Generating prediction & reasoning'
 ];
 
-/* ── OpenRouter proxied via /api/predict (key lives server-side) ── */
+/* ── AI proxied via /api/predict (Gemini free tier; key lives server-side) ── */
 
 /* ── Supabase — cloud prediction storage ── */
 const SB_URL = 'https://zeqxzyisqwemqsvspbyj.supabase.co';
@@ -1908,7 +1908,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.61';
+const APP_VERSION = 'BETA 1.62';
 
 // 2026 race distance (total laps) per circuit — used to auto-fill the live
 // prediction so the user never has to type it. Falls back to live feed if present.
@@ -3386,9 +3386,12 @@ async function runAIPrediction(type){
   // User can hold Shift while clicking to force-regenerate.
   const currentStage = getCurrentStage(race);
   const forceFresh = window._forceFreshPrediction === true;
+  // A stored baseline (non-AI) snapshot is not reused: ask the AI, and only fall back to it if the AI fails.
+  let baselineSnap = null;
   if(!forceFresh){
     const cached = await getStoredPrediction(race, predictionMode, currentStage);
-    if(cached && cached.prediction?.top10?.length){
+    if(cached?.prediction?._fallback) baselineSnap = cached;
+    else if(cached && cached.prediction?.top10?.length){
       lastPrediction = cached.prediction;
       renderPrediction(cached.prediction, race, useQ);
       $('predictBtn').disabled = false;
@@ -3464,16 +3467,16 @@ async function runAIPrediction(type){
       const errText = await response.text().catch(()=>'');
       let errMsg = 'HTTP ' + response.status;
       try{ const j=JSON.parse(errText); errMsg=j.error?.message||errMsg; }catch(ex){}
-      console.error('OpenRouter API error:', errText);
+      console.error('AI API error:', errText);
       throw new Error(errMsg + ' (status ' + response.status + ')');
     }
 
     const data = await response.json();
     console.log('Gemini response received');
 
-    // OpenRouter response structure: data.choices[0].message.content
+    // /api/predict returns { choices:[{ message:{ content } }] }
     const raw = data?.choices?.[0]?.message?.content || '';
-    if(!raw) throw new Error('OpenRouter returned an empty response. Check your API key.');
+    if(!raw) throw new Error('The AI returned an empty response. Try again.');
 
      // Bulletproof JSON extraction — finds { } regardless of markdown wrapping
     let parsed;
@@ -3530,7 +3533,12 @@ async function runAIPrediction(type){
     const sb=$('sprintBtn'); if(sb) sb.disabled=false;
     console.error('AI prediction error:', e);
 
-    if (e.name === 'AbortError') {
+    if (baselineSnap?.prediction?.top10?.length) {
+      lastPrediction = baselineSnap.prediction;
+      renderPrediction(baselineSnap.prediction, race, useQ);
+      showErr('<strong>AI unavailable right now</strong> (' + (e.name === 'AbortError' ? 'timed out' : e.message) + '). Showing the baseline order (grid / standings) — this is not an AI prediction.');
+      setStatus('AI unavailable — showing baseline (not AI)','warn');
+    } else if (e.name === 'AbortError') {
       showErr('<strong>AI timeout:</strong> The request took too long. Try again.');
       setStatus('AI timeout — try again','warn');
     } else {
@@ -3554,7 +3562,7 @@ function renderPrediction(parsed, race, useQ){
   unlockArchTab(); // a prediction now exists — enable the Predictions Archive tab
   setTab('pred');
   // Reassure the user a fresh prediction was generated, and on what basis
-  showToast(useQ ? '✅ New prediction made — based on the latest qualifying grid'
+  if(!parsed._fallback) showToast(useQ ? '✅ New prediction made — based on the latest qualifying grid'
                  : '✅ New prediction made — based on current standings & form', 'success', 4500);
 
   // Podium
@@ -3585,6 +3593,7 @@ function renderPrediction(parsed, race, useQ){
   // AI Reasoning card
   const analysis = (parsed.overallAnalysis||'').replace(/\n/g,'<br>');
   $('aiReasoningBody').innerHTML = `
+    ${parsed._fallback ? '<div style="padding:8px 10px;margin-bottom:10px;border-radius:6px;background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.4);color:var(--gold);font-weight:600">⚠ Baseline order — not an AI prediction. The AI was unavailable when this was saved.</div>' : ''}
     ${analysis}
     ${parsed.keyFactor?`<br><br><strong>🔑 Key Factor:</strong> ${parsed.keyFactor}`:''}
     ${parsed.upsetAlert?`<br><strong>⚡ Upset Alert:</strong> ${parsed.upsetAlert}`:''}

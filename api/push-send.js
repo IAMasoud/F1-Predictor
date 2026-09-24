@@ -4,6 +4,7 @@
  * Canary: F1PRED-AM-2026-9f3c2a7b4e
  */
 import webpush from 'web-push';
+import { generateJSON } from './_ai.js';
 
 /* ───────── 2026 RACE SCHEDULE ─────────
    Synced with frontend BASE_UPCOMING — includes
@@ -311,35 +312,15 @@ Respond ONLY with valid JSON, no markdown:
 {"top10":[{"pos":1,"driverId":"<id from standings>","name":"Full Name","abbr":"ABB","team":"Team","winProb":<number 0-100>,"reasoning":"specific short reason"},... 10 entries total],"overallAnalysis":"3-paragraph analysis: (1) circuit + team fit, (2) drivers to watch, (3) upset risk","keyFactor":"single most important factor","upsetAlert":"one driver who could outperform expectations and why"}`;
 }
 
-/* ───────── Call OpenRouter ───────── */
-async function callOpenRouter(prompt) {
-  const key = process.env.OPENROUTER_KEY;
-  if (!key) throw new Error('OPENROUTER_KEY not configured');
-  const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
-      'HTTP-Referer': 'https://f1-predictor-theta.vercel.app',
-      'X-Title': 'F1 Race Predictor (Auto)',
-    },
-    body: JSON.stringify({
-      model: 'openrouter/auto',
-      messages: [
-        { role: 'system', content: 'You are an expert F1 race analyst. Always respond with valid JSON only — no markdown, no preamble.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 4000,
-    }),
-    signal: AbortSignal.timeout(28000),
+/* ───────── Call the free AI (Gemini free tier, optional Groq backup) ───────── */
+async function callAI(prompt) {
+  const { json } = await generateJSON({
+    system: 'You are an expert F1 race analyst. Always respond with valid JSON only — no markdown, no preamble.',
+    prompt,
+    temperature: 0.7,
+    deadlineMs: 25000,
   });
-  if (!r.ok) throw new Error(`OpenRouter ${r.status}`);
-  const data = await r.json();
-  const raw = data?.choices?.[0]?.message?.content || '';
-  const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('No JSON in AI response');
-  return JSON.parse(raw.slice(start, end + 1));
+  return json;
 }
 
 /* ───────── Supabase helpers ───────── */
@@ -383,7 +364,7 @@ async function savePrediction(SB_URL, SB_KEY, race, prediction, predType, stage)
 }
 
 /* ───────── Deterministic fallback prediction (no AI required) ─────────
-   Used when OpenRouter is unavailable (no credits / network error).
+   Used when the AI is unavailable (quota used up / network error).
    Orders the top 10 by:
      1. Live qualifying / sprint-quali grid (if OpenF1 returned data)
      2. Falls back to championship standings
@@ -421,7 +402,7 @@ function generateFallbackPrediction(race, stage, predType, sqGrid, qGrid) {
           ? `Grid position ${i+1} — baseline projection.`
           : `Championship standings — ${d.pts} pts.`,
     })),
-    overallAnalysis: `Auto-generated baseline prediction for the ${race.name} (${stage}). AI service was unavailable when this snapshot was created, so this ordering uses the live ${grid?.length ? 'qualifying grid' : 'championship standings'} as the primary signal. Open the app and hit "Force Regenerate" once OpenRouter is funded to get the full AI analysis.`,
+    overallAnalysis: `Auto-generated baseline prediction for the ${race.name} (${stage}). AI service was unavailable when this snapshot was created, so this ordering uses the live ${grid?.length ? 'qualifying grid' : 'championship standings'} as the primary signal. It is NOT an AI prediction — it is replaced automatically once the AI is available again.`,
     keyFactor: grid?.length ? 'Grid position' : 'Championship standings',
     upsetAlert: 'No upsets projected — this is a deterministic baseline. Use Force Regenerate for AI insight.',
     _fallback: true,
@@ -431,16 +412,18 @@ function generateFallbackPrediction(race, stage, predType, sqGrid, qGrid) {
 /* ───────── Auto-generate prediction for a (race, stage, type) if missing ───────── */
 async function ensurePrediction(SB_URL, SB_KEY, race, stage, predType, sqGrid, qGrid) {
   const existing = await getStoredPrediction(SB_URL, SB_KEY, race, predType, stage);
-  if (existing) return { generated: false, prediction: existing.prediction };
+  // A stored baseline (non-AI) snapshot is retried so it gets replaced by a real AI prediction.
+  if (existing && !existing.prediction?._fallback) return { generated: false, prediction: existing.prediction };
   try {
     const prompt = buildPrompt(race, stage, predType, sqGrid, qGrid);
-    const prediction = await callOpenRouter(prompt);
+    const prediction = await callAI(prompt);
     if (!prediction?.top10?.length) throw new Error('Empty prediction returned');
     await savePrediction(SB_URL, SB_KEY, race, prediction, predType, stage);
     return { generated: true, prediction, ai: true };
   } catch (e) {
     // AI failed — save a deterministic fallback so the sub-tab still unlocks
     console.warn(`[fallback ${race.name}/${stage}/${predType}]`, e.message);
+    if (existing) return { generated: false, prediction: existing.prediction }; // baseline already stored
     try {
       const fallback = generateFallbackPrediction(race, stage, predType, sqGrid, qGrid);
       await savePrediction(SB_URL, SB_KEY, race, fallback, predType, stage);
@@ -552,7 +535,7 @@ export default async function handler(req, res) {
         if (stage === 'beforeSprintQ' || stage === 'afterSprintQ' || stage === 'afterSprint' || stage === 'afterQuali') {
           // Generate race prediction for current stage
           const raceRes = await ensurePrediction(SB_URL, SB_SERVICE, race, stage, 'race', of1.sqGrid, of1.qGrid);
-          if (raceRes.generated) {
+          if (raceRes.ai) {
             autoGenLog.push(`${race.name}/${stage}/race`);
             notifications.push({ type:'predictionReady', payload:{
               title:`🤖 AI prediction ready — ${race.name}`,
@@ -562,7 +545,7 @@ export default async function handler(req, res) {
           // Sprint prediction only exists for beforeSprintQ + afterSprintQ
           if (stage === 'beforeSprintQ' || stage === 'afterSprintQ') {
             const sprintRes = await ensurePrediction(SB_URL, SB_SERVICE, race, stage, 'sprint', of1.sqGrid, of1.qGrid);
-            if (sprintRes.generated) {
+            if (sprintRes.ai) {
               autoGenLog.push(`${race.name}/${stage}/sprint`);
               notifications.push({ type:'predictionReady', payload:{
                 title:`🤖 Sprint prediction ready — ${race.name}`,
@@ -575,7 +558,7 @@ export default async function handler(req, res) {
         // Normal weekend: beforeQuali + afterQuali (race only)
         if (stage === 'beforeQuali' || stage === 'afterQuali') {
           const raceRes = await ensurePrediction(SB_URL, SB_SERVICE, race, stage, 'race', of1.sqGrid, of1.qGrid);
-          if (raceRes.generated) {
+          if (raceRes.ai) {
             autoGenLog.push(`${race.name}/${stage}/race`);
             notifications.push({ type:'predictionReady', payload:{
               title:`🤖 AI prediction ready — ${race.name}`,
