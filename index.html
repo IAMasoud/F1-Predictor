@@ -1592,22 +1592,31 @@ const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY, 'Conte
 // In-memory cache so buildPrompt (sync) can read past predictions
 let cachedPredictions = [];
 
+/* Escape text before it goes into innerHTML: data from the database, the AI or
+   other sites must never be able to add markup or scripts to the page.
+   driverId values end up inside onclick="…('id')" so they're limited to [A-Za-z0-9_]. */
+function esc(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escDeep(v, key){
+  if(typeof v === 'string') return key === 'driverId' ? (/^[A-Za-z0-9_]+$/.test(v) ? v : '') : esc(v);
+  if(Array.isArray(v)) return v.map(x => escDeep(x, key));
+  if(v && typeof v === 'object'){ const o = {}; for(const k in v) o[k] = escDeep(v[k], k); return o; }
+  return v;
+}
+
+/* Reads use the public key (read-only). Everything read is escaped once here. */
 async function sbGet(path){
   try{
     const r = await fetch(SB_URL+'/rest/v1/'+path, {headers: SB_HEADERS, signal: AbortSignal.timeout(6000)});
-    return r.ok ? r.json() : [];
+    return r.ok ? escDeep(await r.json()) : [];
   }catch(e){ console.warn('Supabase read:', e.message); return []; }
 }
-async function sbPost(path, body, prefer=''){
+/* Writes go through /api/save, which validates rows and writes with the server key. */
+async function saveRow(type, row){
   try{
-    const h = prefer ? {...SB_HEADERS, Prefer: prefer} : SB_HEADERS;
-    await fetch(SB_URL+'/rest/v1/'+path, {method:'POST', headers:h, body:JSON.stringify(body), signal:AbortSignal.timeout(6000)});
-  }catch(e){ console.warn('Supabase write:', e.message); }
-}
-async function sbPatch(path, body){
-  try{
-    await fetch(SB_URL+'/rest/v1/'+path, {method:'PATCH', headers:SB_HEADERS, body:JSON.stringify(body), signal:AbortSignal.timeout(6000)});
-  }catch(e){ console.warn('Supabase patch:', e.message); }
+    const r = await fetch('/api/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type, row}), signal:AbortSignal.timeout(8000)});
+    if(!r.ok) console.warn('Save failed:', type, r.status, (await r.text().catch(()=>'')).slice(0,120));
+    return r.ok;
+  }catch(e){ console.warn('Save failed:', type, e.message); return false; }
 }
 async function refreshPredictionsCache(){
   // Pull up to 200 snapshots — enough to cover full season × stages × race/sprint variants
@@ -1683,7 +1692,7 @@ const BASE_RESULTS = [
    results:['russell','norris','antonelli','piastri','leclerc','hamilton','max_verstappen','lindblad','colapinto','sainz']},
 ];
 
-/* ── Full 2026 calendar — 22 races (Bahrain & Saudi Arabia cancelled due to regional conflict) ── */
+/* ── Full 2026 calendar — 23 races (Saudi Arabia cancelled; Bahrain GP moved to Sepang, Malaysia, Oct 2–4) ── */
 const BASE_UPCOMING = [
   {round:5, name:'Canadian Grand Prix',       circuitId:'villeneuve',   country:'Canada',      date:'2026-05-24', circuit:'Circuit Gilles Villeneuve',        type:'semi-street', sprint:true},
   {round:6, name:'Monaco Grand Prix',         circuitId:'monaco',       country:'Monaco',      date:'2026-06-07', circuit:'Circuit de Monaco',                type:'street'},
@@ -1696,44 +1705,46 @@ const BASE_UPCOMING = [
   {round:13,name:'Italian Grand Prix',        circuitId:'monza',        country:'Italy',       date:'2026-09-06', circuit:'Autodromo Nazionale Monza',        type:'power'},
   {round:14,name:'Madrid Grand Prix',         circuitId:'ifema_madrid', country:'Spain',       date:'2026-09-13', circuit:'IFEMA Madrid Street Circuit',      type:'street'},
   {round:15,name:'Azerbaijan Grand Prix',     circuitId:'baku',         country:'Azerbaijan',  date:'2026-09-26', circuit:'Baku City Circuit',                type:'street'},
-  {round:16,name:'Singapore Grand Prix',      circuitId:'marina_bay',   country:'Singapore',   date:'2026-10-11', circuit:'Marina Bay Street Circuit',        type:'street', sprint:true},
-  {round:17,name:'United States Grand Prix',  circuitId:'americas',     country:'USA',         date:'2026-10-25', circuit:'Circuit of the Americas',          type:'balanced'},
-  {round:18,name:'Mexico City Grand Prix',    circuitId:'rodriguez',    country:'Mexico',      date:'2026-11-01', circuit:'Autodromo Hermanos Rodriguez',      type:'technical'},
-  {round:19,name:'São Paulo Grand Prix',      circuitId:'interlagos',   country:'Brazil',      date:'2026-11-08', circuit:'Autodromo Jose Carlos Pace',       type:'balanced'},
-  {round:20,name:'Las Vegas Grand Prix',      circuitId:'las_vegas',    country:'USA',         date:'2026-11-21', circuit:'Las Vegas Strip Circuit',          type:'power'},
-  {round:21,name:'Qatar Grand Prix',          circuitId:'losail',       country:'Qatar',       date:'2026-11-29', circuit:'Lusail International Circuit',     type:'power'},
-  {round:22,name:'Abu Dhabi Grand Prix',      circuitId:'yas_marina',   country:'UAE',         date:'2026-12-06', circuit:'Yas Marina Circuit',               type:'technical'},
+  {round:16,name:'Bahrain Grand Prix (Malaysia)', circuitId:'sepang',     country:'Malaysia',    date:'2026-10-04', circuit:'Sepang International Circuit',     type:'power'},
+  {round:17,name:'Singapore Grand Prix',      circuitId:'marina_bay',   country:'Singapore',   date:'2026-10-11', circuit:'Marina Bay Street Circuit',        type:'street', sprint:true},
+  {round:18,name:'United States Grand Prix',  circuitId:'americas',     country:'USA',         date:'2026-10-25', circuit:'Circuit of the Americas',          type:'balanced'},
+  {round:19,name:'Mexico City Grand Prix',    circuitId:'rodriguez',    country:'Mexico',      date:'2026-11-01', circuit:'Autodromo Hermanos Rodriguez',      type:'technical'},
+  {round:20,name:'São Paulo Grand Prix',      circuitId:'interlagos',   country:'Brazil',      date:'2026-11-08', circuit:'Autodromo Jose Carlos Pace',       type:'balanced'},
+  {round:21,name:'Las Vegas Grand Prix',      circuitId:'las_vegas',    country:'USA',         date:'2026-11-22', circuit:'Las Vegas Strip Circuit',          type:'power'},
+  {round:22,name:'Qatar Grand Prix',          circuitId:'losail',       country:'Qatar',       date:'2026-11-29', circuit:'Lusail International Circuit',     type:'power'},
+  {round:23,name:'Abu Dhabi Grand Prix',      circuitId:'yas_marina',   country:'UAE',         date:'2026-12-06', circuit:'Yas Marina Circuit',               type:'technical'},
 ];
 
 /* ── 2026 race weekend session schedule (UTC) ──
    The source of truth for "has this session ended?"
-   Doesn't depend on OpenF1, OpenRouter, or Supabase. Pure date check. */
+   Doesn't depend on OpenF1, the AI, or Supabase. Pure date check. */
 const RACE_TIMES = {
-  villeneuve:     { raceUTC:'18:00', qualiDate:'2026-05-23', qualiUTC:'20:00',
+  villeneuve:     { raceUTC:'20:00', qualiDate:'2026-05-23', qualiUTC:'20:00',
                     sprintQualiDate:'2026-05-22', sprintQualiUTC:'20:30',
                     sprintDate:'2026-05-23', sprintUTC:'16:00' },
   monaco:         { raceUTC:'13:00', qualiDate:'2026-06-06', qualiUTC:'14:00' },
   catalunya:      { raceUTC:'13:00', qualiDate:'2026-06-13', qualiUTC:'14:00' },
   red_bull_ring:  { raceUTC:'13:00', qualiDate:'2026-06-27', qualiUTC:'14:00' },
-  silverstone:    { raceUTC:'14:00', qualiDate:'2026-07-04', qualiUTC:'14:00',
+  silverstone:    { raceUTC:'14:00', qualiDate:'2026-07-04', qualiUTC:'15:00',
                     sprintQualiDate:'2026-07-03', sprintQualiUTC:'15:30',
-                    sprintDate:'2026-07-04', sprintUTC:'10:00' },
+                    sprintDate:'2026-07-04', sprintUTC:'11:00' },
   spa:            { raceUTC:'13:00', qualiDate:'2026-07-18', qualiUTC:'14:00' },
   hungaroring:    { raceUTC:'13:00', qualiDate:'2026-07-25', qualiUTC:'14:00' },
-  zandvoort:      { raceUTC:'13:00', qualiDate:'2026-08-22', qualiUTC:'13:00',
+  zandvoort:      { raceUTC:'13:00', qualiDate:'2026-08-22', qualiUTC:'14:00',
                     sprintQualiDate:'2026-08-21', sprintQualiUTC:'14:30',
                     sprintDate:'2026-08-22', sprintUTC:'10:00' },
   monza:          { raceUTC:'13:00', qualiDate:'2026-09-05', qualiUTC:'14:00' },
   ifema_madrid:   { raceUTC:'13:00', qualiDate:'2026-09-12', qualiUTC:'14:00' },
   baku:           { raceUTC:'11:00', qualiDate:'2026-09-25', qualiUTC:'12:00' },
+  sepang:         { raceUTC:'07:00', qualiDate:'2026-10-03', qualiUTC:'08:00' },
   marina_bay:     { raceUTC:'12:00', qualiDate:'2026-10-10', qualiUTC:'13:00',
-                    sprintQualiDate:'2026-10-09', sprintQualiUTC:'12:00',
-                    sprintDate:'2026-10-10', sprintUTC:'12:00' },
-  americas:       { raceUTC:'19:00', qualiDate:'2026-10-24', qualiUTC:'22:00' },
+                    sprintQualiDate:'2026-10-09', sprintQualiUTC:'12:30',
+                    sprintDate:'2026-10-10', sprintUTC:'09:00' },
+  americas:       { raceUTC:'20:00', qualiDate:'2026-10-24', qualiUTC:'21:00' },
   rodriguez:      { raceUTC:'20:00', qualiDate:'2026-10-31', qualiUTC:'21:00' },
   interlagos:     { raceUTC:'17:00', qualiDate:'2026-11-07', qualiUTC:'18:00' },
-  las_vegas:      { raceUTC:'06:00', qualiDate:'2026-11-20', qualiUTC:'06:00' },
-  losail:         { raceUTC:'17:00', qualiDate:'2026-11-28', qualiUTC:'18:00' },
+  las_vegas:      { raceUTC:'04:00', qualiDate:'2026-11-21', qualiUTC:'04:00' },
+  losail:         { raceUTC:'16:00', qualiDate:'2026-11-28', qualiUTC:'18:00' },
   yas_marina:     { raceUTC:'13:00', qualiDate:'2026-12-05', qualiUTC:'14:00' },
 };
 
@@ -1789,10 +1800,9 @@ const TN = {mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Re
 const F1P = [25,18,15,12,10,8,6,4,2,1];
 const SPRINT_P = [8,7,6,5,4,3,2,1]; // sprint race points (top 8)
 
-/* Compute live driver + constructor standings from completedRaces results.
-   This is the source of truth — keeps standings (and the AI prompt's form data)
-   current automatically after every race, instead of relying on hardcoded
-   BASE_DRIVERS (which goes stale) or real-world Ergast (wrong fictional season).
+/* Compute driver + constructor standings from completedRaces results.
+   Only used when the official Jolpica standings are missing or older than the
+   latest race we have results for (see fetchLiveData).
    Sprint rounds (round ending in 'S') use SPRINT_P; full races use F1P. */
 function computeStandings(){
   if(!Array.isArray(completedRaces) || !completedRaces.length) return;
@@ -1858,8 +1868,9 @@ async function mergeSupabaseRaceResults(){
         raceName: meta.name + (isSprint ? ' Sprint' : ''),
         circuitId: row.circuit_id, date: meta.date, results,
       };
-      // Replace existing same-round entry, else append
+      // Official (Jolpica) results win; Supabase only fills rounds not published yet.
       const idx = completedRaces.findIndex(r => String(r.round) === roundKey);
+      if(idx >= 0 && completedRaces[idx]._official) continue;
       if(idx >= 0) completedRaces[idx] = entry;
       else completedRaces.push(entry);
     }
@@ -1908,14 +1919,14 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.62';
+const APP_VERSION = 'BETA 1.63';
 
 // 2026 race distance (total laps) per circuit — used to auto-fill the live
 // prediction so the user never has to type it. Falls back to live feed if present.
 const CIRCUIT_TOTAL_LAPS = {
   albert_park:58, shanghai:56, suzuka:53, miami:57, villeneuve:70, monaco:78,
   catalunya:66, red_bull_ring:71, silverstone:52, spa:44, hungaroring:70,
-  zandvoort:72, monza:53, ifema_madrid:57, baku:51, marina_bay:62,
+  zandvoort:72, monza:53, ifema_madrid:57, baku:51, sepang:56, marina_bay:62,
   americas:56, rodriguez:71, interlagos:71, las_vegas:50, losail:57, yas_marina:58,
 };
 
@@ -2071,18 +2082,13 @@ async function fetchJolpicaSessionGrid(race, kind){
 async function saveSessionGridToSupabase(race, sessionName, gridData, source){
   if(!race?.circuitId || !race?.round || !gridData?.length) return;
   try {
-    const body = {
-      circuit_id:  race.circuitId,
-      round:       race.round,
-      year:        2026,
+    await saveRow('session', {
+      circuit_id:   race.circuitId,
+      round:        Number(race.round),
       session_name: sessionName,
-      grid_data:   gridData.map(g => ({ pos: g.pos, abbr: g.abbr })),
-      source:      source || 'unknown',
-      fetched_at:  new Date().toISOString(),
-    };
-    // Upsert via Prefer: resolution=merge-duplicates (sessions table needs unique constraint
-    // on circuit_id+round+session_name+year — already set up in your Supabase schema)
-    await sbPost('sessions', body, 'resolution=merge-duplicates,return=minimal');
+      grid_data:    gridData.map(g => ({ pos: g.pos, abbr: g.abbr })),
+      source:       source || 'unknown',
+    });
   } catch(e) {
     console.warn('Supabase session save failed:', e.message);
   }
@@ -2156,93 +2162,97 @@ function loadData(){
   fetchOf1SeasonInsights();
 }
 
+/* Jolpica ids that differ from the ids this site uses. */
+const JOLPICA_DRIVER_ALIAS  = { arvid_lindblad: 'lindblad' };
+const JOLPICA_CIRCUIT_ALIAS = { madring: 'ifema_madrid', vegas: 'las_vegas' };
+const siteDriverId  = id => JOLPICA_DRIVER_ALIAS[id]  || id;
+const siteCircuitId = id => JOLPICA_CIRCUIT_ALIAS[id] || id;
+
+/* Jolpica returns at most 100 result rows per request, so page through all of
+   them and regroup by round (one race can be split across two pages).
+   kind: 'results' (Grands Prix) or 'sprint'. */
+async function fetchAllJolpicaRaces(kind){
+  const prop = kind === 'sprint' ? 'SprintResults' : 'Results';
+  const byRound = {};
+  let offset = 0, total = Infinity;
+  for(let page = 0; offset < total && page < 10; page++){
+    const d = await jolpi(`/2026/${kind}.json?limit=100&offset=${offset}`, `${kind}26_${offset}`);
+    const M = d?.MRData; if(!M) break;
+    total = +M.total || 0;
+    for(const r of (M.RaceTable?.Races || [])){
+      const e = byRound[r.round] || (byRound[r.round] = { round:r.round, raceName:r.raceName, circuitId:siteCircuitId(r.Circuit.circuitId), date:r.date, rows:[] });
+      e.rows.push(...(r[prop] || []));
+    }
+    offset += +M.limit || 100;
+  }
+  return Object.values(byRound)
+    .filter(e => e.rows.length >= 15)   // a page that failed mid-way can leave a race incomplete
+    .map(e => ({
+      round:    kind === 'sprint' ? e.round + 'S' : String(e.round),
+      raceName: kind === 'sprint' ? e.raceName + ' Sprint' : e.raceName,
+      circuitId: e.circuitId, date: e.date,
+      results:  e.rows.sort((a,b)=>+a.position-+b.position).map(x => siteDriverId(x.Driver.driverId)),
+    }));
+}
+
 async function fetchLiveData(){
   // Hard 8-second timeout — if API doesn't respond, use baseline silently
   const timeout = setTimeout(()=>{
-    setStatus('2026 season · 4 races done · baseline data', 'live');
+    setStatus('2026 season · live data still loading…', 'loading');
     setProgress(100);
   }, 8000);
 
   try {
-    // Run all 3 calls in parallel — much faster than sequential
-    const [resultsData, drvData, conData] = await Promise.all([
-      tryJolpi('/2026/results.json?limit=500', 'res26'),
-      tryJolpi('/2026/driverStandings.json?limit=30', 'ds26'),
+    const [apiRaces, apiSprints, drvData, conData] = await Promise.all([
+      fetchAllJolpicaRaces('results').catch(e => { console.warn('Jolpica results:', e.message); return []; }),
+      fetchAllJolpicaRaces('sprint').catch(e => { console.warn('Jolpica sprints:', e.message); return []; }),
+      tryJolpi('/2026/driverStandings.json?limit=40', 'ds26'),
       tryJolpi('/2026/constructorStandings.json?limit=30', 'cs26'),
     ]);
 
     clearTimeout(timeout);
-    let gotLive = false;
+    const gotLive = apiRaces.length > 0;
 
-    // Parse race results — no extra sprint calls, just use the race data
-    if(resultsData){
-      const races = resultsData.MRData?.RaceTable?.Races;
-      if(races && races.length){
-        // Merge API races with hardcoded sprint results from BASE_RESULTS
-        const apiRaces = races.map(r => ({
-          round:     r.round,
-          raceName:  r.raceName,
-          circuitId: r.Circuit.circuitId,
-          date:      r.date,
-          results:   (r.Results||[]).sort((a,b)=>+a.position-+b.position).map(x=>x.Driver.driverId),
-        }));
-
-        // Keep any sprint entries from BASE_RESULTS and add new API race entries
-        const sprintEntries = BASE_RESULTS.filter(r => String(r.round).endsWith('S'));
-        const apiRoundNums  = new Set(apiRaces.map(r=>+r.round));
-
-        // Combine: sprint entries whose race round is in API results + all API races
-        completedRaces = [
-          ...sprintEntries.filter(s => apiRoundNums.has(+s.round.replace('S',''))),
-          ...apiRaces,
-        ].sort((a,b) => {
-          const an = parseFloat(String(a.round).replace('S','')) + (String(a.round).endsWith('S') ? 0.5 : 1);
-          const bn = parseFloat(String(b.round).replace('S','')) + (String(b.round).endsWith('S') ? 0.5 : 1);
-          return an - bn;
-        });
-
-        // Upcoming = BASE_UPCOMING rounds not yet completed
-        const doneRounds = new Set(apiRaces.map(r=>+r.round));
-        upcomingRaces = BASE_UPCOMING.filter(u => !doneRounds.has(u.round));
-        gotLive = true;
-      }
+    // Official results replace the hardcoded baseline round by round.
+    const byKey = {};
+    BASE_RESULTS.forEach(r => byKey[String(r.round)] = r);
+    [...apiSprints, ...apiRaces].forEach(r => byKey[String(r.round)] = { ...r, _official: true });
+    const ord = r => parseFloat(String(r.round).replace('S','')) + (String(r.round).endsWith('S') ? -0.5 : 0);
+    completedRaces = Object.values(byKey).sort((a,b) => ord(a) - ord(b));
+    if(gotLive){
+      const doneRounds = new Set(apiRaces.map(r => +r.round));
+      upcomingRaces = BASE_UPCOMING.filter(u => !doneRounds.has(u.round));
     }
 
-    // Parse driver standings
-    if(drvData){
-      const list = drvData.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings;
-      if(list && list.length){
-        drivers = list.map(e => {
-          const base = BASE_DRIVERS.find(d => d.driverId === e.Driver.driverId);
-          return {
-            driverId: e.Driver.driverId,
-            name:     e.Driver.givenName + ' ' + e.Driver.familyName,
-            abbr:     e.Driver.code || e.Driver.familyName.slice(0,3).toUpperCase(),
-            team:     e.Constructors[0]?.constructorId || base?.team || 'unknown',
-            pts:      +e.points || 0,
-            pos:      +e.position || 99,
-          };
-        });
-      }
+    // Official driver standings (Jolpica).
+    let officialRound = 0;
+    const dList = drvData?.MRData?.StandingsTable?.StandingsLists?.[0];
+    if(dList?.DriverStandings?.length){
+      officialRound = +dList.round || 0;
+      drivers = dList.DriverStandings.map(e => {
+        const id = siteDriverId(e.Driver.driverId);
+        const base = BASE_DRIVERS.find(d => d.driverId === id);
+        return {
+          driverId: id,
+          name:     e.Driver.givenName + ' ' + e.Driver.familyName,
+          abbr:     e.Driver.code || base?.abbr || e.Driver.familyName.slice(0,3).toUpperCase(),
+          team:     e.Constructors[0]?.constructorId || base?.team || 'unknown',
+          pts:      +e.points || 0,
+          pos:      +e.position || 99,
+        };
+      });
+    }
+    const cList = conData?.MRData?.StandingsTable?.StandingsLists?.[0]?.ConstructorStandings;
+    if(cList?.length){
+      constructors = cList.map(e => ({ name: e.Constructor.name, pts: +e.points || 0 }));
     }
 
-    // Parse constructor standings
-    if(conData){
-      const list = conData.MRData?.StandingsTable?.StandingsLists?.[0]?.ConstructorStandings;
-      if(list && list.length){
-        constructors = list.map(e => ({
-          name: e.Constructor.name,
-          pts:  +e.points || 0,
-        }));
-      }
-    }
-
-    // Fold in finished-race results from Supabase (bridge/cron captured —
-    // Canada, Monaco, Spain, …), then recompute standings from them. This
-    // overrides the Ergast parse above (real-world data, wrong fictional season)
-    // and keeps standings + AI form data accurate after every race.
+    // Races Jolpica hasn't published yet (e.g. a race that just finished) come from
+    // Supabase. Only when that adds a race newer than the official standings do we
+    // compute the table ourselves from the full results.
     await mergeSupabaseRaceResults();
-    computeStandings();
+    const lastRaceRound = Math.max(0, ...completedRaces.filter(r => !String(r.round).endsWith('S')).map(r => +r.round));
+    if(!officialRound || lastRaceRound > officialRound) computeStandings();
 
     // Re-render with live data
     buildSelector();
@@ -2261,7 +2271,7 @@ async function fetchLiveData(){
   } catch(e) {
     clearTimeout(timeout);
     console.warn('Live fetch failed:', e.message);
-    setStatus('2026 season · 4 races done · baseline data', 'live');
+    setStatus('2026 season · baseline data · live data unavailable', 'warn');
     setProgress(100);
   }
 }
@@ -2659,6 +2669,7 @@ const CIRCUIT_DATA = {
   hungaroring:{difficulty:'High. Very slow twisty circuit with almost no straight. Huge downforce required. Overtaking nearly impossible — qualifying vital. Called Monaco without the barriers.',trackNotes:'Hungaroring, Budapest. Very low average speed. High downforce. Multiple direction changes. Hot dusty conditions in August. Tyre strategy and pit stops decisive.',teamHistory:'Mercedes dominant historically. McLaren has been excellent at Hungaroring. Ferrari competitive. Red Bull has underperformed relative to usual level here.',driverHistory:'Hamilton 8 wins — unmatched dominance. Verstappen won 2022. Piastri won 2024 — McLaren pace advantage. Norris podium contender. Alonso has 2 wins here.',circuitBias:'Favours maximum downforce, efficient slow-corner cars, good traction. Grid position very important. Undercut strategy at pit stops can work. Rain is biggest upset factor.'},
   zandvoort:{difficulty:'High. Banked corners unique challenges. High-speed flowing layout. Very narrow — overtaking nearly impossible. Qualifying critical.',trackNotes:'Circuit Zandvoort, Netherlands. Unique banked Hugenholtz and final banking corners. Tight and narrow. Coastal weather variable. Enormous Dutch crowd.',teamHistory:'Red Bull completely dominated 2021-2023. McLaren competitive in 2024. Mercedes improving. Ferrari historically struggled with setup requirements here.',driverHistory:'Verstappen has won every Dutch GP since return — home hero. Russell won 2024. Norris competitive. Hamilton has not won here. Leclerc qualifying threat.',circuitBias:'Favours Red Bull historically but 2026 regs change this. High downforce critical. Track position once lost is nearly impossible to recover. Weather is biggest variable.'},
   monza:{difficulty:'Medium-low. Full throttle 75% of lap. Minimal downforce. Braking from 350kph into chicanes. Slipstream racing in qualifying and race.',trackNotes:'Autodromo Nazionale Monza, Italy. Fastest race of year. Minimal downforce setup. Two chicanes and Parabolica. Tifosi create electric Ferrari atmosphere.',teamHistory:'Ferrari have incredible Monza history. Mercedes dominant hybrid era. McLaren won 2021 (Ricciardo). Red Bull competitive but not as strong as high-downforce tracks.',driverHistory:'Hamilton 5 wins. Leclerc emotional 2019 win — crowd favourite here. Ricciardo 2021. Verstappen won 2022. Ferrari drivers always extra motivated at home. Sainz podium regular.',circuitBias:'Favours powerful engines, low-drag setups, brave braking. Slipstreaming in race makes predictions difficult. Safety car near guaranteed. Ferrari always dangerous at Monza.'},
+  sepang:{difficulty:'Medium-high. Two very long straights joined by a slow hairpin, plus fast sweeping corners. Heavy tyre wear in the heat.',trackNotes:'Sepang International Circuit, Malaysia — hosting the 2026 Bahrain Grand Prix (Oct 2–4). First F1 race here since 2017. Hot and humid, with afternoon thunderstorms common; rain can change the race quickly.',teamHistory:'No data for current cars — F1 last raced here in 2017. Cars with strong straight-line speed and good tyre management in heat should suit it.',driverHistory:'Few current drivers have raced F1 here; most of the grid has no F1 experience at Sepang.',circuitBias:'Power + tyre management; rain risk'},
   ifema_madrid:{difficulty:'Unknown — brand new circuit for 2026. Street circuit through IFEMA convention area of Madrid. Expected to be high difficulty.',trackNotes:'IFEMA Madrid Street Circuit — 2026 debut. No historical data. Expected tight street layout with smooth asphalt and technical sections.',teamHistory:'No historical data. Teams with strong street circuit packages expected to excel. Ferrari and Mercedes prepared most extensively.',driverHistory:'No data. Drivers with strong street circuit records (Leclerc, Verstappen, Alonso) expected to adapt quickly. Rookies disadvantaged on unknown track.',circuitBias:'Favour teams with best street circuit development and simulator preparation. First race = significantly higher uncertainty and upset probability.'},
   baku:{difficulty:'Extreme. 2.2km straight combined with incredibly narrow old city section (7.6m wide). Highest crash probability on calendar. Mechanical failures from kerb strikes common.',trackNotes:'Baku City Circuit, Azerbaijan. Ultra-high-speed straight plus medieval city section. Heavy braking. Safety car probability near 100%.',teamHistory:'Red Bull dominant 2018-2023. Ferrari very competitive — power unit excels on long straight. Mercedes struggled with instability here. McLaren improving.',driverHistory:'Leclerc has pole multiple times — exceptionally fast in Baku qualifying. Perez won multiple times — his best circuit. Verstappen won 2021. Safety cars create dramatic result changes. Sainz podium regular.',circuitBias:'Favours strong power units, brave qualifying drivers, street circuit specialists. Safety cars guaranteed — tyre strategy around VSC/SC decisive. Mechanical failures common.'},
   marina_bay:{difficulty:'Extreme. Night race, humidity and heat punishing drivers physically. Long slow street circuit with zero overtaking. Fastest lap irrelevant — track position is everything.',trackNotes:'Marina Bay Street Circuit, Singapore. Night race with 1000+ LED lights. Longest race duration — often near 2-hour limit. Extreme heat and humidity. Very high physical demand.',teamHistory:'Ferrari and Red Bull dominated. Mercedes strong 2014-2018. McLaren has struggled here. Setup compromise between high downforce and thermal management is critical.',driverHistory:'Hamilton 4 wins but not dominant recently. Verstappen won 2023. Sainz won 2023. Alonso excellent physical fitness helps in heat. Leclerc strong qualifier.',circuitBias:'Favours high downforce, physically fit drivers, teams with reliable cars in high temps. Safety cars guaranteed. Grid position = finishing position in most races.'},
@@ -2740,7 +2751,7 @@ function buildPrompt(race, useQualy, predType){
 
   // ── ML LAYER 2: Circuit-specific AI correction (learn from past errors here) ──
   const circuitPreds = cachedPredictions.filter(p =>
-    p.circuit_id === race.circuitId && p.accuracy !== null && p.actual_results?.length
+    p.circuit_id === race.circuitId && p.accuracy !== null && p.actual_results?.length && !p.prediction?._fallback
   );
   let circuitLearning = '';
   if (circuitPreds.length) {
@@ -2749,7 +2760,7 @@ function buildPrompt(race, useQualy, predType){
       const pred5  = (p.prediction?.top10 || []).slice(0, 5);
       const act5   = (p.actual_results || []).slice(0, 5);
       const errors = pred5.map(predD => {
-        const actualIdx = (p.actual_results || []).indexOf(predD.driverId);
+        const actualIdx = (p.actual_results || []).map(driverAbbr).indexOf(driverAbbr(predD));
         if (actualIdx === -1 || Math.abs(predD.pos - (actualIdx+1)) < 3) return null;
         const d = drivers.find(x => x.driverId === predD.driverId);
         return `${d?.abbr||predD.abbr} pred P${predD.pos} → actual P${actualIdx+1}`;
@@ -2764,15 +2775,14 @@ function buildPrompt(race, useQualy, predType){
   }
 
   // ── ML LAYER 3: Systematic bias detection across ALL predictions ──
-  const recentScored = cachedPredictions.filter(p => p.accuracy !== null && p.actual_results?.length).slice(-12);
+  const recentScored = cachedPredictions.filter(p => p.accuracy !== null && p.actual_results?.length && !p.prediction?._fallback).slice(-12);
   const biasMap = {}; // abbr → {totalDiff, count}
   recentScored.forEach(p => {
     (p.prediction?.top10||[]).forEach(predD => {
-      const actualIdx = (p.actual_results||[]).indexOf(predD.driverId);
+      const abbr = driverAbbr(predD);
+      const actualIdx = (p.actual_results||[]).map(driverAbbr).indexOf(abbr);
       if (actualIdx === -1) return;
       const diff = predD.pos - (actualIdx + 1); // + means AI ranked too low, - means too high
-      const d = drivers.find(x => x.driverId === predD.driverId);
-      const abbr = d?.abbr || predD.abbr;
       if (!biasMap[abbr]) biasMap[abbr] = {total:0, count:0};
       biasMap[abbr].total += diff;
       biasMap[abbr].count++;
@@ -2858,7 +2868,7 @@ const F1COM_SLUG = {
   miami:'miami', villeneuve:'canada', monaco:'monaco',
   catalunya:'spain', red_bull_ring:'austria', silverstone:'great-britain',
   hungaroring:'hungary', zandvoort:'netherlands', monza:'italy',
-  ifema_madrid:'spain', baku:'azerbaijan', marina_bay:'singapore',
+  ifema_madrid:'spain', baku:'azerbaijan', sepang:'bahrain', marina_bay:'singapore',
   americas:'united-states', rodriguez:'mexico', interlagos:'brazil',
   las_vegas:'las-vegas', losail:'qatar', yas_marina:'abu-dhabi',
   spa:'belgium', sakhir:'bahrain', jeddah:'saudi-arabia',
@@ -2876,7 +2886,7 @@ async function tryFetchFromF1Com(race, kind){
     const r = await fetch(url, {signal: AbortSignal.timeout(15000)});
     const data = await r.json();
     if(!data?.ok || !data?.published) return null;
-    return data.results || null;
+    return data.results ? escDeep(data.results) : null;
   } catch(e) {
     console.warn('F1.com scrape failed:', e.message);
     return null;
@@ -3158,7 +3168,7 @@ Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track 
     let content = data.choices?.[0]?.message?.content || '';
     // Strip markdown fences if AI included them
     content = content.replace(/^```json\s*|\s*```$/g, '').trim();
-    const parsed = JSON.parse(content);
+    let parsed = JSON.parse(content);
 
     if(!parsed.top10 || !Array.isArray(parsed.top10)){
       throw new Error('Invalid AI response — no top10 array');
@@ -3177,7 +3187,8 @@ Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track 
       parsed.keyMovers = parsed.keyMovers.filter(m => validAbbrs.has(m.abbr));
     }
 
-    // Render result
+    // Render result (escaped — this text comes from the AI)
+    parsed = escDeep(parsed);
     const movers = (parsed.keyMovers || []).map(m => {
       const dir = m.movement?.startsWith('+') ? '#00e676' : '#ff5252';
       return `<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;font-size:12px">
@@ -3234,7 +3245,7 @@ async function tryLocalBridge(){
       cache: 'no-store',
     });
     if(!r.ok) return null;
-    const data = await r.json();
+    const data = escDeep(await r.json());
     if(!data?.grid?.length) return null;
     return data;
   } catch(e) { return null; }
@@ -3333,11 +3344,7 @@ async function ensureFreshDataFromSupabase(race){
         const stored = await getStoredPrediction(race, 'race');
         if(stored && stored.accuracy === null && actualIds.length >= 10){
           const acc = calcAccuracy(stored.prediction.top10, actualIds);
-          await sbPatch(
-            `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.race`,
-            { actual_results: actualIds, accuracy: acc }
-          );
-          await refreshPredictionsCache();
+          await requestServerScoring();
           console.log('[fresh] Auto-scored AI vs Reality:', acc + '%');
           const tab = $('tComp');
           if(tab) tab.innerHTML = `⚖️ AI vs Reality <span class="auto-badge" style="font-size:8px">${acc}%</span>`;
@@ -3518,7 +3525,8 @@ async function runAIPrediction(type){
     }
     thinking.classList.remove('visible');
     savePrediction(race, parsed, predictionMode, currentStage);
-    renderPrediction(parsed, race, useQ);
+    lastPrediction = escDeep(parsed);
+    renderPrediction(lastPrediction, race, useQ);
     setStatus('AI prediction complete — ' + race.name + (predictionMode==='sprint'?' Sprint':''), 'live');
     const info = $('dataSourceInfo');
     if(info) info.textContent = '🆕 Fresh AI · ' + dataSourcesSummary();
@@ -3789,13 +3797,14 @@ const OF1_PROXY = '/api/of1?url=';
 
 // Map our circuitId → OpenF1 location city name
 const OF1_LOC = {
+  // exact OpenF1 "location" values for 2026
   albert_park:'Melbourne', shanghai:'Shanghai', suzuka:'Suzuka',
-  miami:'Miami', villeneuve:'Montreal', monaco:'Monaco',
+  miami:'Miami Gardens', villeneuve:'Montréal', monaco:'Monte Carlo',
   catalunya:'Barcelona', red_bull_ring:'Spielberg', silverstone:'Silverstone',
-  hungaroring:'Budapest', zandvoort:'Zandvoort', monza:'Monza',
-  ifema_madrid:'Madrid', baku:'Baku', marina_bay:'Singapore',
+  spa:'Spa-Francorchamps', hungaroring:'Budapest', zandvoort:'Zandvoort', monza:'Monza',
+  ifema_madrid:'Madrid', baku:'Baku', sepang:'Kuala Lumpur', marina_bay:'Marina Bay',
   americas:'Austin', rodriguez:'Mexico City', interlagos:'São Paulo',
-  las_vegas:'Las Vegas', losail:'Lusail', yas_marina:'Abu Dhabi',
+  las_vegas:'Las Vegas', losail:'Lusail', yas_marina:'Yas Marina',
 };
 
 // Simple in-memory cache so we don't hammer the API on every tab switch
@@ -4350,11 +4359,7 @@ async function autoFetchSessions(){
         const stored = await getStoredPrediction(race, 'race');
         if(stored && stored.accuracy === null){
           const acc = calcAccuracy(stored.prediction.top10, actualIds);
-          await sbPatch(
-            `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.race`,
-            { actual_results: actualIds, accuracy: acc }
-          );
-          await refreshPredictionsCache();
+          await requestServerScoring();
           const tab = $('tComp');
           if(tab) tab.innerHTML = `⚖️ AI vs Reality <span class="auto-badge" style="font-size:8px">${acc}%</span>`;
         }
@@ -4470,11 +4475,7 @@ async function autoFetchSessions(){
         const stored = await getStoredPrediction(race, 'race');
         if(stored && stored.accuracy === null){
           const acc = calcAccuracy(stored.prediction.top10, actualIds);
-          await sbPatch(
-            `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.race`,
-            { actual_results: actualIds, accuracy: acc }
-          );
-          await refreshPredictionsCache();
+          await requestServerScoring();
         }
       });
       if(!rOk) await tryJolpicaFor('race', 'Race', async g => {
@@ -4482,11 +4483,7 @@ async function autoFetchSessions(){
         const stored = await getStoredPrediction(race, 'race');
         if(stored && stored.accuracy === null){
           const acc = calcAccuracy(stored.prediction.top10, actualIds);
-          await sbPatch(
-            `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.race`,
-            { actual_results: actualIds, accuracy: acc }
-          );
-          await refreshPredictionsCache();
+          await requestServerScoring();
         }
       });
 
@@ -4599,11 +4596,7 @@ async function autoFetchSessions(){
           const stored = await getStoredPrediction(r2,'race');
           if(stored && stored.accuracy===null){
             const acc = calcAccuracy(stored.prediction.top10, actualIds);
-            await sbPatch(
-              `predictions?circuit_id=eq.${r2.circuitId}&round=eq.${r2.round}&pred_type=eq.race`,
-              { actual_results: actualIds, accuracy: acc }
-            );
-            await refreshPredictionsCache();
+            await requestServerScoring();
             const tab=$('tComp');
             if(tab) tab.innerHTML=`⚖️ AI vs Reality <span class="auto-badge" style="font-size:8px">${acc}%</span>`;
             showToast(`Race result loaded — ${acc}% accuracy!`, 'success');
@@ -4697,15 +4690,21 @@ function stagesForRace(race){
 
 async function savePrediction(race, prediction, predType, stage){
   const finalStage = stage || getCurrentStage(race);
-  await sbPost(
-    'predictions?on_conflict=circuit_id,round,pred_type,stage',
-    { race_name:race.name, round:Number(race.round), circuit_id:race.circuitId,
-      race_date:race.date, pred_type:predType||'race',
-      stage: finalStage,
-      prediction, actual_results:null, accuracy:null },
-    'resolution=merge-duplicates'
-  );
+  await saveRow('prediction', {
+    race_name:race.name, round:Number(race.round), circuit_id:race.circuitId,
+    race_date:race.date, pred_type:predType||'race', stage: finalStage, prediction });
   await refreshPredictionsCache();
+}
+
+/* The prediction AI vs Reality should judge: the last one made before the race
+   (final → afterQuali → afterSprint → afterSprintQ → before…), preferring a real AI
+   prediction over a baseline. Mid-race live predictions are never saved. */
+const PRE_RACE_STAGE_ORDER = ['final','afterQuali','afterSprint','afterSprintQ','beforeQuali','beforeSprintQ'];
+async function getBestPreRaceSnapshot(race, predType){
+  const rows = await sbGet(`predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.${predType||'race'}&order=created_at.desc`);
+  if(!rows?.length) return null;
+  const rank = r => (r.prediction?._fallback ? 100 : 0) + (PRE_RACE_STAGE_ORDER.indexOf(r.stage) + 1 || 50);
+  return rows.slice().sort((a,b) => rank(a) - rank(b))[0];
 }
 
 async function getStoredPrediction(race, predType, stage){
@@ -4953,18 +4952,41 @@ function forceFreshPredictionFromArch(){
   runAIPrediction(mode);
 }
 
+/* Driver → 3-letter code, whatever shape it arrives in (object, driverId or code). */
+function driverAbbr(x){
+  if(!x) return '';
+  if(typeof x === 'object') return String(x.abbr || driverAbbr(x.driverId)).toUpperCase();
+  const d = drivers.find(v => v.driverId === x) || BASE_DRIVERS.find(v => v.driverId === x);
+  return String(d?.abbr || x).toUpperCase();
+}
+
+/* Accuracy of a predicted top 10 against the full finishing order.
+   Exact position = 1 point, within ±2 places = 0.5 point, as a % of the maximum.
+   The server scoring job (supabase/functions/auto-results) uses the same formula. */
 function calcAccuracy(top10, actualIds){
-  if(!top10||!top10.length||!actualIds||!actualIds.length) return null;
-  const n = Math.min(top10.length, actualIds.length, 10);
-  let exact=0, close=0;
-  for(let i=0;i<n;i++){
-    const pred=top10[i];
-    const isMatch=pred.driverId===actualIds[i]||pred.abbr===(drivers.find(x=>x.driverId===actualIds[i])?.abbr);
-    if(isMatch){ exact++; continue; }
-    const actualPos=actualIds.findIndex(id=>id===pred.driverId||(drivers.find(x=>x.driverId===id)?.abbr===pred.abbr));
-    if(actualPos>=0&&Math.abs(actualPos-i)<=2) close++;
+  if(!top10?.length || !actualIds?.length) return null;
+  const pred = top10.map(driverAbbr), act = actualIds.map(driverAbbr);
+  const n = Math.min(pred.length, act.length, 10);
+  let exact = 0, close = 0;
+  for(let i = 0; i < n; i++){
+    if(pred[i] === act[i]){ exact++; continue; }
+    const j = act.indexOf(pred[i]);
+    if(j >= 0 && Math.abs(j - i) <= 2) close++;
   }
-  return Math.round(((exact + close*0.5)/n)*100);
+  return Math.round(((exact + close * 0.5) / n) * 100);
+}
+
+/* Scores are written only by the server job, so every snapshot is scored on its
+   own with one formula against the official classification. The page just asks
+   the job to run now (at most every 5 minutes per visitor). */
+let _scoringRequestedAt = 0;
+async function requestServerScoring(){
+  if(Date.now() - _scoringRequestedAt < 5 * 60 * 1000) return;
+  _scoringRequestedAt = Date.now();
+  try {
+    await fetch(SB_URL + '/functions/v1/auto-results', { method: 'POST', mode: 'no-cors', signal: AbortSignal.timeout(60000) });
+    await refreshPredictionsCache();
+  } catch(e){ console.warn('Scoring request:', e.message); }
 }
 
 /* Auto-update accuracy for any stored predictions that now have API results */
@@ -4978,12 +5000,8 @@ async function checkStoredPredictions(){
       r.circuitId===entry.circuit_id && String(r.round)===String(entry.round)+'S' && entry.pred_type==='sprint'
     );
     if(!actual) continue;
-    const actualResults = actual.results.slice(0,10);
-    const accuracy = calcAccuracy(entry.prediction.top10, actualResults);
-    await sbPatch(
-      `predictions?circuit_id=eq.${entry.circuit_id}&round=eq.${entry.round}&pred_type=eq.${entry.pred_type}`,
-      { actual_results: actualResults, accuracy }
-    );
+    await requestServerScoring();   // results exist for an unscored snapshot
+    break;
   }
   await refreshPredictionsCache();
   // Badge the AI vs Reality tab if current race has a scored prediction
@@ -5023,7 +5041,7 @@ async function autoShowComparison(){
   const racePassed = raceDay < now;
 
   // Try to load stored prediction
-  const stored = await getStoredPrediction(race,'race') ?? await getStoredPrediction(race,'sprint');
+  const stored = await getBestPreRaceSnapshot(race,'race') ?? await getBestPreRaceSnapshot(race,'sprint');
 
   if(!stored){
     if(!racePassed){
@@ -5039,7 +5057,7 @@ async function autoShowComparison(){
   if(stored.actual_results && stored.accuracy!==null){
     // We have everything — show comparison
     if(stateEl) stateEl.innerHTML='';
-    showComparisonResult(stored.prediction.top10, stored.actual_results, true);
+    showComparisonResult(stored.prediction.top10, stored.actual_results, true, !!stored.prediction._fallback, stored.stage);
     // Badge the tab
     const tab=$('tComp');
     if(tab) tab.innerHTML=`⚖️ AI vs Reality <span class="auto-badge" style="font-size:8px">${stored.accuracy}%</span>`;
@@ -5073,15 +5091,17 @@ async function refreshAndScore(btn){
   await autoShowComparison();
 }
 
-function showComparisonResult(top10, actualIds, isAuto){
+function showComparisonResult(top10, actualIds, isAuto, isBaseline, stage){
   const n=Math.min(top10.length,actualIds.length,10);
+  const actAbbrs=actualIds.map(driverAbbr);
   let exact=0,close=0;
   const rows=[];
   for(let i=0;i<n;i++){
     const pred=top10[i];
-    const actualDriver=drivers.find(x=>x.driverId===actualIds[i]);
-    const isMatch=pred.driverId===actualIds[i]||(actualDriver&&pred.abbr===actualDriver.abbr);
-    const predActualPos=actualIds.findIndex(id=>id===pred.driverId);
+    const predAbbr=driverAbbr(pred);
+    const actualDriver=drivers.find(x=>x.driverId===actualIds[i]||x.abbr===actAbbrs[i]);
+    const isMatch=predAbbr===actAbbrs[i];
+    const predActualPos=actAbbrs.indexOf(predAbbr);
     const diff=predActualPos>=0?Math.abs(predActualPos-i):null;
     if(isMatch) exact++;
     else if(diff!==null&&diff<=2) close++;
@@ -5092,17 +5112,18 @@ function showComparisonResult(top10, actualIds, isAuto){
     const diffTxt=isMatch?'✓':diff!==null?'±'+diff:'✗';
     rows.push(`<div class="cmp-row ${cls}" style="animation:slideUp .35s ${i*0.05}s ease both;opacity:0;animation-fill-mode:both">
       <div class="cmp-pos">${i+1}</div>
-      <div class="cmp-side"><div class="cmp-label">🤖 AI Predicted</div><div class="cmp-name" style="color:${pcol}">${pred.name}</div><div style="font-size:10px;color:var(--dim)">${pred.winProb}% confidence</div></div>
-      <div class="cmp-side"><div class="cmp-label">🏁 Actual</div><div class="cmp-name" style="color:${acol}">${actualDriver?.name||actualIds[i]}</div></div>
+      <div class="cmp-side"><div class="cmp-label">${isBaseline?'📋 Baseline':'🤖 AI Predicted'}</div><div class="cmp-name" style="color:${pcol}">${esc(pred.name||predAbbr)}</div><div style="font-size:10px;color:var(--dim)">${Number(pred.winProb)||0}% confidence</div></div>
+      <div class="cmp-side"><div class="cmp-label">🏁 Actual</div><div class="cmp-name" style="color:${acol}">${esc(actualDriver?.name||actualIds[i])}</div></div>
       <div class="cmp-diff" style="color:${diffCol}">${diffTxt}</div>
     </div>`);
   }
   const score=Math.round(((exact+close*0.5)/n)*100);
   const scoreCol=score>=70?'#00e676':score>=40?'var(--gold)':'var(--red)';
   const scoreLbl=score>=80?'Excellent':score>=60?'Good':score>=40?'Fair':'Poor';
+  const basis=isBaseline?' · ⚠ baseline, not AI (AI was unavailable)':(stage?` · ${stageLabel(stage)} prediction`:'');
   $('accuracyCard').innerHTML=`
     <div class="accuracy-big" style="color:${scoreCol}">${score}%</div>
-    <div class="accuracy-lbl">${scoreLbl} AI accuracy${isAuto?' · Auto-updated':''}</div>
+    <div class="accuracy-lbl">${scoreLbl} ${isBaseline?'baseline':'AI'} accuracy${basis}${isAuto?' · Auto-updated':''}</div>
     <div class="accuracy-breakdown">
       <div class="acc-stat"><div class="acc-stat-val" style="color:#00e676">${exact}</div><div class="acc-stat-lbl">Exact hits</div></div>
       <div class="acc-stat"><div class="acc-stat-val" style="color:var(--gold)">${close}</div><div class="acc-stat-lbl">Within ±2</div></div>
@@ -5129,6 +5150,7 @@ const CIRCUIT_COORDS = {
   monza:        {lat:45.62, lon:9.28},
   ifema_madrid: {lat:40.47, lon:-3.60},
   baku:         {lat:40.37, lon:49.85},
+  sepang:       {lat:2.76,  lon:101.74},
   marina_bay:   {lat:1.29,  lon:103.86},
   americas:     {lat:30.13, lon:-97.64},
   rodriguez:    {lat:19.40, lon:-99.09},
@@ -5278,7 +5300,7 @@ async function checkPostRaceBanner(){
 
   // Check if we already have results stored
   try{
-    const stored=await getStoredPrediction(race,'race');
+    const stored=await getBestPreRaceSnapshot(race,'race');
     if(stored?.actual_results?.length){ banner.style.display='none'; return; }
     // Race is over and no results yet — show banner
     const title=$('postRaceTitle'), sub=$('postRaceSub');
@@ -5681,7 +5703,7 @@ function openDriverCard(driverId){
   }).join('') || '<span style="color:var(--dim);font-size:12px">No races yet</span>';
 
   // AI prediction accuracy for this driver
-  const predRows = cachedPredictions.filter(p=>p.accuracy!==null).map(p=>{
+  const predRows = cachedPredictions.filter(p=>p.accuracy!==null && !p.prediction?._fallback).map(p=>{
     const t = p.prediction?.top10||[];
     const predicted = t.find(x=>x.driverId===driverId);
     return predicted ? { race: p.race_name?.replace(' Grand Prix',''), pos: predicted.pos } : null;
@@ -5820,7 +5842,7 @@ function renderConfidenceTrend(){
   // created_at.desc, so the first one seen for each race is the most recent.
   const seen=new Set();
   const scored=cachedPredictions.filter(p=>{
-      if(p.accuracy===null||p.pred_type!=='race') return false;
+      if(p.accuracy===null||p.pred_type!=='race'||p.prediction?._fallback) return false;
       const k=`${p.circuit_id}|${p.round}`;
       if(seen.has(k)) return false;
       seen.add(k); return true;
@@ -6220,7 +6242,13 @@ function formArrow(driverId){
 function renderAccuracyOverview(){
   const el=$('accOverview');
   if(!el) return;
-  const scored=cachedPredictions.filter(p=>p.accuracy!==null);
+  const seenOv=new Set();
+  const scored=cachedPredictions.filter(p=>{
+    if(p.accuracy===null || p.prediction?._fallback) return false;
+    const k=`${p.circuit_id}|${p.round}|${p.pred_type||'race'}`;
+    if(seenOv.has(k)) return false;
+    seenOv.add(k); return true;
+  });
   if(!scored.length){ el.innerHTML=''; return; }
   const avg=Math.round(scored.reduce((s,p)=>s+p.accuracy,0)/scored.length);
   const best=Math.max(...scored.map(p=>p.accuracy));
@@ -6265,7 +6293,7 @@ function renderAIReportCard(){
   // so multi-stage snapshots of the same race aren't double-counted.
   const seen=new Set();
   const scored=cachedPredictions.filter(p=>{
-    if(p.accuracy===null || !p.actual_results?.length || !p.prediction?.top10?.length) return false;
+    if(p.accuracy===null || !p.actual_results?.length || !p.prediction?.top10?.length || p.prediction?._fallback) return false;
     const k=`${p.circuit_id}|${p.round}|${p.pred_type||'race'}`;
     if(seen.has(k)) return false;
     seen.add(k); return true;
@@ -6615,11 +6643,12 @@ async function subscribeNewsletter(){
   if(!email||!email.includes('@')){ showToast('Enter a valid email','warn'); return; }
   btn.disabled=true; btn.textContent='Subscribing…';
   try{
-    await sbPost(
-      'subscribers?on_conflict=email',
-      {email, subscribed_at:new Date().toISOString(), active:true},
-      'resolution=merge-duplicates'
-    );
+    const r = await fetch('/api/subscribe', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email}), signal:AbortSignal.timeout(10000)});
+    if(!r.ok){
+      const msg = (await r.json().catch(()=>({})))?.error || 'Subscribe failed — try again';
+      if(status) status.innerHTML='<span style="color:var(--red)">'+esc(msg)+'</span>';
+      throw new Error(msg);
+    }
     input.value='';
     if(status) status.innerHTML='<span style="color:#00e676">✓ Subscribed! You\'ll get a report after every race weekend.</span>';
     showToast('✓ Subscribed successfully!','success',5000);
@@ -7207,6 +7236,17 @@ function renderPenalties(){
 initTheme();                 // restore saved dark/light preference
 refreshPredictionsCache();   // load past predictions from Supabase into memory cache
 loadData();                  // render baseline + fetch live data
+
+// Older race-report emails linked to /?unsubscribe=1 without saying which address.
+if(new URLSearchParams(location.search).has('unsubscribe')){
+  setTimeout(async () => {
+    history.replaceState(null, '', location.pathname);
+    const email = prompt('Enter the email address you subscribed with to stop the race-report emails:');
+    if(!email) return;
+    const r = await fetch('/api/unsubscribe', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email})}).catch(() => null);
+    showToast(r?.ok ? '✓ Unsubscribed — no more race-report emails' : 'Could not unsubscribe — try again', r?.ok ? 'success' : 'error', 6000);
+  }, 1200);
+}
 // H2H selectors are populated after drivers load (buildSelector calls renderHistory which updates drivers)
 // We call buildH2HSelectors() again after a short delay to ensure drivers array is populated
 setTimeout(buildH2HSelectors, 1500);

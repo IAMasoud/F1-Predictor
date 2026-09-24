@@ -1,2 +1,8 @@
+# Only the website itself is deployed to Vercel.
 live-bridge/
+supabase/
 make_icons.py
+*.ts
+*.md
+deno.lock
+.DS_Store

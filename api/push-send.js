@@ -16,7 +16,7 @@ const RACES = [
   { round:5, circuitId:'villeneuve', name:'Canadian Grand Prix',
     circuit:'Circuit Gilles Villeneuve', type:'semi-street', sprint:true,
     date:'2026-05-24', qualiDate:'2026-05-23',
-    raceUTC:'18:00', qualiUTC:'20:00', lat:45.5048, lon:-73.5224,
+    raceUTC:'20:00', qualiUTC:'20:00', lat:45.5048, lon:-73.5224,
     sprintQualiDate:'2026-05-22', sprintQualiUTC:'20:30',
     sprintDate:'2026-05-23', sprintUTC:'16:00' },
   { round:6, circuitId:'monaco', name:'Monaco Grand Prix',
@@ -35,9 +35,9 @@ const RACES = [
   { round:9, circuitId:'silverstone', name:'British Grand Prix',
     circuit:'Silverstone Circuit', type:'balanced', sprint:true,
     date:'2026-07-05', qualiDate:'2026-07-04',
-    raceUTC:'14:00', qualiUTC:'14:00', lat:52.0786, lon:-1.0169,
+    raceUTC:'14:00', qualiUTC:'15:00', lat:52.0786, lon:-1.0169,
     sprintQualiDate:'2026-07-03', sprintQualiUTC:'15:30',
-    sprintDate:'2026-07-04', sprintUTC:'10:00' },
+    sprintDate:'2026-07-04', sprintUTC:'11:00' },
   { round:10, circuitId:'spa', name:'Belgian Grand Prix',
     circuit:'Circuit de Spa-Francorchamps', type:'power',
     date:'2026-07-19', qualiDate:'2026-07-18',
@@ -50,7 +50,7 @@ const RACES = [
   { round:12, circuitId:'zandvoort', name:'Dutch Grand Prix',
     circuit:'Circuit Zandvoort', type:'technical', sprint:true,
     date:'2026-08-23', qualiDate:'2026-08-22',
-    raceUTC:'13:00', qualiUTC:'13:00', lat:52.3888, lon:4.5409,
+    raceUTC:'13:00', qualiUTC:'14:00', lat:52.3888, lon:4.5409,
     sprintQualiDate:'2026-08-21', sprintQualiUTC:'14:30',
     sprintDate:'2026-08-22', sprintUTC:'10:00' },
   { round:13, circuitId:'monza', name:'Italian Grand Prix',
@@ -65,50 +65,55 @@ const RACES = [
     circuit:'Baku City Circuit', type:'street',
     date:'2026-09-26', qualiDate:'2026-09-25',
     raceUTC:'11:00', qualiUTC:'12:00', lat:40.3724, lon:49.8533 },
+  { round:16, circuitId:'sepang', name:'Bahrain Grand Prix (Malaysia)',
+    circuit:'Sepang International Circuit', type:'power',
+    date:'2026-10-04', qualiDate:'2026-10-03',
+    raceUTC:'07:00', qualiUTC:'08:00', lat:2.7608, lon:101.7380 },
   // Sprint weekend
-  { round:16, circuitId:'marina_bay', name:'Singapore Grand Prix',
+  { round:17, circuitId:'marina_bay', name:'Singapore Grand Prix',
     circuit:'Marina Bay Street Circuit', type:'street', sprint:true,
     date:'2026-10-11', qualiDate:'2026-10-10',
     raceUTC:'12:00', qualiUTC:'13:00', lat:1.2914, lon:103.8640,
-    sprintQualiDate:'2026-10-09', sprintQualiUTC:'12:00',
-    sprintDate:'2026-10-10', sprintUTC:'12:00' },
-  { round:17, circuitId:'americas', name:'United States Grand Prix',
+    sprintQualiDate:'2026-10-09', sprintQualiUTC:'12:30',
+    sprintDate:'2026-10-10', sprintUTC:'09:00' },
+  { round:18, circuitId:'americas', name:'United States Grand Prix',
     circuit:'Circuit of the Americas', type:'balanced',
     date:'2026-10-25', qualiDate:'2026-10-24',
-    raceUTC:'19:00', qualiUTC:'22:00', lat:30.1328, lon:-97.6411 },
-  { round:18, circuitId:'rodriguez', name:'Mexico City Grand Prix',
+    raceUTC:'20:00', qualiUTC:'21:00', lat:30.1328, lon:-97.6411 },
+  { round:19, circuitId:'rodriguez', name:'Mexico City Grand Prix',
     circuit:'Autodromo Hermanos Rodriguez', type:'technical',
     date:'2026-11-01', qualiDate:'2026-10-31',
     raceUTC:'20:00', qualiUTC:'21:00', lat:19.4042, lon:-99.0907 },
-  { round:19, circuitId:'interlagos', name:'São Paulo Grand Prix',
+  { round:20, circuitId:'interlagos', name:'São Paulo Grand Prix',
     circuit:'Autodromo Jose Carlos Pace', type:'balanced',
     date:'2026-11-08', qualiDate:'2026-11-07',
     raceUTC:'17:00', qualiUTC:'18:00', lat:-23.7036, lon:-46.6997 },
-  { round:20, circuitId:'las_vegas', name:'Las Vegas Grand Prix',
+  { round:21, circuitId:'las_vegas', name:'Las Vegas Grand Prix',
     circuit:'Las Vegas Strip Circuit', type:'power',
-    date:'2026-11-21', qualiDate:'2026-11-20',
-    raceUTC:'06:00', qualiUTC:'06:00', lat:36.1699, lon:-115.1398 },
-  { round:21, circuitId:'losail', name:'Qatar Grand Prix',
+    date:'2026-11-22', qualiDate:'2026-11-21',
+    raceUTC:'04:00', qualiUTC:'04:00', lat:36.1699, lon:-115.1398 },
+  { round:22, circuitId:'losail', name:'Qatar Grand Prix',
     circuit:'Lusail International Circuit', type:'power',
     date:'2026-11-29', qualiDate:'2026-11-28',
-    raceUTC:'17:00', qualiUTC:'18:00', lat:25.4900, lon:51.4542 },
-  { round:22, circuitId:'yas_marina', name:'Abu Dhabi Grand Prix',
+    raceUTC:'16:00', qualiUTC:'18:00', lat:25.4900, lon:51.4542 },
+  { round:23, circuitId:'yas_marina', name:'Abu Dhabi Grand Prix',
     circuit:'Yas Marina Circuit', type:'technical',
     date:'2026-12-06', qualiDate:'2026-12-05',
     raceUTC:'13:00', qualiUTC:'14:00', lat:24.4672, lon:54.6031 },
 ];
 
-// Map our circuitId → OpenF1 location city name
+// Map our circuitId → exact OpenF1 "location" value (2026)
 const OF1_LOC = {
-  villeneuve:'Montreal', monaco:'Monaco', catalunya:'Barcelona', red_bull_ring:'Spielberg',
+  villeneuve:'Montréal', monaco:'Monte Carlo', catalunya:'Barcelona', red_bull_ring:'Spielberg',
   silverstone:'Silverstone', spa:'Spa-Francorchamps', hungaroring:'Budapest', zandvoort:'Zandvoort',
-  monza:'Monza', ifema_madrid:'Madrid', baku:'Baku', marina_bay:'Singapore',
+  monza:'Monza', ifema_madrid:'Madrid', baku:'Baku', sepang:'Kuala Lumpur', marina_bay:'Marina Bay',
   americas:'Austin', rodriguez:'Mexico City', interlagos:'São Paulo', las_vegas:'Las Vegas',
-  losail:'Lusail', yas_marina:'Abu Dhabi',
+  losail:'Lusail', yas_marina:'Yas Marina',
 };
 
-// Current driver standings + team mapping (kept in sync with frontend BASE_DRIVERS)
-const DRIVERS = [
+// Driver list + team mapping. Points/order are refreshed from the official
+// Jolpica standings on every run (loadLiveStandings); these values are only the fallback.
+let DRIVERS = [
   {id:'antonelli',name:'Andrea Kimi Antonelli',abbr:'ANT',team:'Mercedes',pts:100},
   {id:'russell',name:'George Russell',abbr:'RUS',team:'Mercedes',pts:80},
   {id:'leclerc',name:'Charles Leclerc',abbr:'LEC',team:'Ferrari',pts:59},
@@ -132,6 +137,37 @@ const DRIVERS = [
   {id:'alonso',name:'Fernando Alonso',abbr:'ALO',team:'Aston Martin',pts:0},
   {id:'stroll',name:'Lance Stroll',abbr:'STR',team:'Aston Martin',pts:0},
 ];
+
+let STANDINGS_LABEL = 'fallback list';
+
+/* Refresh DRIVERS points + order from the official standings (Jolpica). Keeps the
+   static list if the API is unreachable, so predictions never block on it. */
+async function loadLiveStandings() {
+  try {
+    const r = await fetch('https://api.jolpi.ca/ergast/f1/2026/driverstandings.json?limit=40', { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const list = (await r.json())?.MRData?.StandingsTable?.StandingsLists?.[0];
+    const rows = list?.DriverStandings;
+    if (!rows?.length) return;
+    const known = Object.fromEntries(DRIVERS.map(d => [d.id, d]));
+    const fresh = rows.map(e => {
+      const k = known[e.Driver.driverId];
+      return {
+        id: e.Driver.driverId,
+        name: k?.name || `${e.Driver.givenName} ${e.Driver.familyName}`,
+        abbr: k?.abbr || String(e.Driver.code || '').toUpperCase(),
+        team: k?.team || e.Constructors?.[0]?.name || '',
+        pts: Number(e.points) || 0,
+      };
+    });
+    // keep any listed driver the standings table doesn't mention yet
+    DRIVERS.forEach(d => { if (!fresh.find(f => f.id === d.id)) fresh.push({ ...d, pts: 0 }); });
+    DRIVERS = fresh;
+    STANDINGS_LABEL = `after Round ${list.round}`;
+  } catch (e) {
+    console.warn('[standings] Jolpica unavailable, using fallback list:', e.message);
+  }
+}
 
 function todayUTC() { return new Date().toISOString().slice(0,10); }
 function hourUTC()  { return new Date().getUTCHours(); }
@@ -301,7 +337,7 @@ function buildPrompt(race, stage, predType, sqGrid, qGrid) {
 
   return `You are an expert F1 race analyst. Predict the top 10 finishing order for the ${isSprint ? 'SPRINT RACE' : 'GRAND PRIX'} at ${race.name} (${race.circuit}, Round ${race.round}).
 
-Current championship standings (after Miami GP):
+Current championship standings (${STANDINGS_LABEL}):
 ${standings}
 
 Stage of weekend: ${stage}${gridStr}
@@ -450,6 +486,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Misconfigured' });
 
   webpush.setVapidDetails('mailto:ahmoudy365@gmail.com', VAPID_PUB, VAPID_PRIV);
+  await loadLiveStandings();
 
   const today = todayUTC();
   const hour  = hourUTC();

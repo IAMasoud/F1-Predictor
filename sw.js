@@ -4,7 +4,7 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v62';
+const CACHE = 'f1-predictor-v63';
 const STATIC = [
   '/',
   '/index.html',
@@ -32,18 +32,15 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Never cache Supabase, OpenRouter, or live F1 API calls
-  if (
-    url.hostname.includes('supabase.co') ||
-    url.hostname.includes('openrouter.ai') ||
-    url.hostname.includes('ergast.com') ||
-    url.hostname.includes('jolpi.ca') ||
-    url.hostname.includes('open-meteo.com')
-  ) {
-    return;
-  }
+  // Only GET requests are cacheable; the app's own API (/api/…) and every other
+  // site's data (Supabase, Jolpica, OpenF1, weather, the local bridge) always go
+  // straight to the network. That keeps the cache small: just the app shell.
+  if (e.request.method !== 'GET') return;
+  const sameOrigin = url.origin === self.location.origin;
+  const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+  if (!(sameOrigin || isFont) || (sameOrigin && url.pathname.startsWith('/api/'))) return;
 
-  // For navigation requests: serve from cache, fall back to network
+  // Page loads: serve the cached app, fall back to network
   if (e.request.mode === 'navigate') {
     e.respondWith(
       caches.match('/index.html').then(cached => cached || fetch(e.request))
@@ -51,13 +48,13 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // For everything else: network first, fall back to cache
+  // Static files: network first, fall back to cache
   e.respondWith(
     fetch(e.request)
       .then(res => {
         if (res.ok) {
           const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
         }
         return res;
       })

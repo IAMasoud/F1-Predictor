@@ -30,8 +30,9 @@ npm install
 cp .env.example .env
 ```
 Then open `.env` and fill in:
-- `SUPABASE_URL` — same one your PWA uses (Project Settings → API in Supabase)
-- `SUPABASE_KEY` — the anon public key (also in Project Settings → API)
+- `BRIDGE_KEY` — the `CRON_SECRET` value from Vercel (Settings → Environment Variables).
+  The bridge saves through the site's `/api/save` endpoint; the database itself is read-only to the public key.
+- `NEWSLETTER_TRIGGER_KEY` — the same value, if the race-report email should go out automatically after the race.
 
 ## Run it (every race weekend)
 
@@ -51,14 +52,14 @@ You'll see output like:
 ...
 ```
 
-Leave the Terminal window open. The script writes new positions to Supabase every 5 seconds.
+Leave the Terminal window open. The script saves new positions every 5 seconds.
 
 When you're done (after the session), close the Terminal window or press `Ctrl+C`.
 
 ## Configuration
 
 Edit `.env`:
-- `FLUSH_INTERVAL_MS` — how often to write to Supabase (default 5000ms = 5s). Lower = more real-time.
+- `FLUSH_INTERVAL_MS` — how often to save positions (default 5000ms = 5s). Lower = more real-time.
 - `DEBUG=true` — verbose logging if something looks wrong.
 
 ## Resource usage
@@ -69,7 +70,8 @@ Negligible — see main project for benchmarks. Won't impact your computer.
 
 **"WebSocket closed" repeating** — F1's SignalR drops idle connections; the script auto-reconnects. Normal.
 
-**"Supabase write failed: 401"** — your `SUPABASE_KEY` is wrong or your `sessions` table RLS is blocking inserts.
+**"Save failed: 403"** — `BRIDGE_KEY` doesn't match the `CRON_SECRET` in Vercel.
+**"Save failed: 400"** — the site rejected the data (the message says which field).
 
 **"Negotiate failed: 403"** — F1 has tightened access. Try again later; usually works during race weekends.
 

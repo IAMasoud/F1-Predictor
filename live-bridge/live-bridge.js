@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════
 //   F1 LIVE BRIDGE
 //   Connects to formula1.com's official SignalR live-timing feed,
-//   parses positions in real-time, and writes them to your Supabase
-//   `sessions` table. The PWA reads from Supabase and shows live data.
+//   parses positions in real-time, and saves them to the `sessions` table
+//   through the site's /api/save endpoint (the database itself is read-only
+//   to the public key). The PWA reads from Supabase and shows live data.
 //
 //   Usage:  node live-bridge.js
-//   Setup:  copy .env.example → .env, fill in SUPABASE_URL + SUPABASE_KEY
+//   Setup:  copy .env.example → .env, fill in SITE_URL + BRIDGE_KEY
 // ═══════════════════════════════════════════════════════════════════════
 
 import WebSocket from 'ws';
@@ -15,8 +16,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const {
-  SUPABASE_URL,
-  SUPABASE_KEY,
+  SITE_URL = 'https://f1-predictor-theta.vercel.app',
+  BRIDGE_KEY,
   FLUSH_INTERVAL_MS = 5000,
   LOCAL_HTTP_PORT = 3001,
   NEWSLETTER_TRIGGER_URL,
@@ -28,9 +29,9 @@ const debug = DEBUG === 'true';
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const dbg = (...a) => { if (debug) log('🔍', ...a); };
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY in .env');
-  console.error('   Copy .env.example → .env and fill in your credentials.');
+if (!BRIDGE_KEY) {
+  console.error('❌ Missing BRIDGE_KEY in .env (it is the CRON_SECRET value set in Vercel).');
+  console.error('   Copy .env.example → .env and fill it in.');
   process.exit(1);
 }
 
@@ -69,6 +70,7 @@ const LOC_TO_CIRCUIT = {
   'Barcelona': 'catalunya', 'Madrid': 'ifema_madrid', 'Spielberg': 'red_bull_ring',
   'Silverstone': 'silverstone', 'Spa-Francorchamps': 'spa', 'Budapest': 'hungaroring',
   'Zandvoort': 'zandvoort', 'Monza': 'monza', 'Baku': 'baku',
+  'Kuala Lumpur': 'sepang', 'Sepang': 'sepang', 'Miami Gardens': 'miami',
   'Marina Bay': 'marina_bay', 'Singapore': 'marina_bay',
   'Austin': 'americas', 'Mexico City': 'rodriguez',
   'São Paulo': 'interlagos', 'Sao Paulo': 'interlagos',
@@ -80,8 +82,8 @@ const CIRCUIT_TO_ROUND_2026 = {
   albert_park:1, shanghai:2, suzuka:3, miami:4,
   villeneuve:5, monaco:6, catalunya:7, red_bull_ring:8, silverstone:9,
   spa:10, hungaroring:11, zandvoort:12, monza:13, ifema_madrid:14,
-  baku:15, marina_bay:16, americas:17, rodriguez:18, interlagos:19,
-  las_vegas:20, losail:21, yas_marina:22,
+  baku:15, sepang:16, marina_bay:17, americas:18, rodriguez:19, interlagos:20,
+  las_vegas:21, losail:22, yas_marina:23,
 };
 
 // ─── Step 1: SignalR Core Negotiate ─────────────────────────────────────
@@ -296,27 +298,23 @@ async function flushToSupabase() {
   };
 
   try {
-    // PostgREST UPSERT requires on_conflict in the URL + Prefer: resolution=merge-duplicates
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/sessions?on_conflict=circuit_id,round,year,session_name`, {
+    // Saved through the site's validated endpoint (upserts on circuit+round+year+session).
+    const r = await fetch(`${SITE_URL}/api/save`, {
       method: 'POST',
-      headers: {
-        'apikey':         SUPABASE_KEY,
-        'Authorization':  `Bearer ${SUPABASE_KEY}`,
-        'Content-Type':   'application/json',
-        'Prefer':         'resolution=merge-duplicates,return=minimal',
-      },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', 'x-bridge-key': BRIDGE_KEY },
+      body: JSON.stringify({ type: 'session', row: body }),
+      signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) {
       const txt = await r.text();
-      log('❌ Supabase write failed:', r.status, txt.slice(0, 200));
+      log('❌ Save failed:', r.status, txt.slice(0, 200));
     } else {
       log('✅ Flushed', grid.length, 'positions →', sessionName,
         '· Leader:', grid[0]?.abbr, 'lap', grid[0]?.lap);
       maybeTriggerNewsletter(grid);
     }
   } catch (e) {
-    log('❌ Supabase fetch error:', e.message);
+    log('❌ Save error:', e.message);
   }
 }
 
@@ -383,7 +381,7 @@ function startLocalServer() {
 async function main() {
   log('🏎  F1 Live Bridge starting…');
   log('   Flush interval:', FLUSH_INTERVAL_MS, 'ms');
-  log('   Target:', SUPABASE_URL);
+  log('   Target:', `${SITE_URL}/api/save`);
   startLocalServer();
 
   const { connectionToken, cookie } = await negotiate();

@@ -3,10 +3,28 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-// Sends race-weekend report emails to all subscribers via Resend.
+// Sends race-weekend report emails to all subscribers via Brevo.
 // Triggered automatically by the live bridge when the race ends,
-// or manually via Vercel dashboard / curl for testing.
+// or manually with the CRON_SECRET key (?key=…, optional &circuit=<id> for an older race).
+import { unsubToken } from './_guard.js';
+
 export const config = { maxDuration: 30 };
+
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const PRE_RACE_STAGES = ['final', 'afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
+
+// Same formula as the website and the scoring job: exact = 1, within ±2 = 0.5.
+function calcAccuracy(predAbbrs, actualAbbrs) {
+  const n = Math.min(predAbbrs.length, actualAbbrs.length, 10);
+  if (!n) return null;
+  let exact = 0, close = 0;
+  for (let i = 0; i < n; i++) {
+    if (predAbbrs[i] === actualAbbrs[i]) { exact++; continue; }
+    const j = actualAbbrs.indexOf(predAbbrs[i]);
+    if (j >= 0 && Math.abs(j - i) <= 2) close++;
+  }
+  return Math.round(((exact + close * 0.5) / n) * 100);
+}
 
 const TEAM_COLORS = {
   mercedes:'#27F4D2', ferrari:'#E8002D', mclaren:'#FF8000', red_bull:'#3671C6',
@@ -31,7 +49,7 @@ const CALENDAR = [
   {round:1, id:'albert_park',  gp:'Australian Grand Prix',   flag:'🇦🇺', venue:'Albert Park Circuit',            date:'2026-03-08'},
   {round:2, id:'shanghai',     gp:'Chinese Grand Prix',      flag:'🇨🇳', venue:'Shanghai International Circuit',  date:'2026-03-15'},
   {round:3, id:'suzuka',       gp:'Japanese Grand Prix',     flag:'🇯🇵', venue:'Suzuka Circuit',                 date:'2026-03-29'},
-  {round:4, id:'miami',        gp:'Miami Grand Prix',        flag:'🇺🇸', venue:'Miami International Autodrome',   date:'2026-05-04'},
+  {round:4, id:'miami',        gp:'Miami Grand Prix',        flag:'🇺🇸', venue:'Miami International Autodrome',   date:'2026-05-03'},
   {round:5, id:'villeneuve',   gp:'Canadian Grand Prix',     flag:'🇨🇦', venue:'Circuit Gilles Villeneuve',      date:'2026-05-24'},
   {round:6, id:'monaco',       gp:'Monaco Grand Prix',       flag:'🇲🇨', venue:'Circuit de Monaco',              date:'2026-06-07'},
   {round:7, id:'catalunya',    gp:'Spanish Grand Prix',      flag:'🇪🇸', venue:'Circuit de Barcelona-Catalunya', date:'2026-06-14'},
@@ -43,27 +61,32 @@ const CALENDAR = [
   {round:13,id:'monza',        gp:'Italian Grand Prix',      flag:'🇮🇹', venue:'Autodromo Nazionale Monza',      date:'2026-09-06'},
   {round:14,id:'ifema_madrid', gp:'Madrid Grand Prix',       flag:'🇪🇸', venue:'IFEMA Madrid Street Circuit',    date:'2026-09-13'},
   {round:15,id:'baku',         gp:'Azerbaijan Grand Prix',   flag:'🇦🇿', venue:'Baku City Circuit',              date:'2026-09-26'},
-  {round:16,id:'marina_bay',   gp:'Singapore Grand Prix',    flag:'🇸🇬', venue:'Marina Bay Street Circuit',      date:'2026-10-11'},
-  {round:17,id:'americas',     gp:'United States Grand Prix', flag:'🇺🇸', venue:'Circuit of the Americas',        date:'2026-10-25'},
-  {round:18,id:'rodriguez',    gp:'Mexico City Grand Prix',  flag:'🇲🇽', venue:'Autodromo Hermanos Rodriguez',   date:'2026-11-01'},
-  {round:19,id:'interlagos',   gp:'São Paulo Grand Prix',    flag:'🇧🇷', venue:'Autódromo José Carlos Pace',     date:'2026-11-08'},
-  {round:20,id:'las_vegas',    gp:'Las Vegas Grand Prix',    flag:'🇺🇸', venue:'Las Vegas Strip Circuit',        date:'2026-11-21'},
-  {round:21,id:'losail',       gp:'Qatar Grand Prix',        flag:'🇶🇦', venue:'Lusail International Circuit',    date:'2026-11-29'},
-  {round:22,id:'yas_marina',   gp:'Abu Dhabi Grand Prix',    flag:'🇦🇪', venue:'Yas Marina Circuit',             date:'2026-12-06'},
+  {round:16,id:'sepang',       gp:'Bahrain Grand Prix (Malaysia)', flag:'🇲🇾', venue:'Sepang International Circuit', date:'2026-10-04'},
+  {round:17,id:'marina_bay',   gp:'Singapore Grand Prix',    flag:'🇸🇬', venue:'Marina Bay Street Circuit',      date:'2026-10-11'},
+  {round:18,id:'americas',     gp:'United States Grand Prix', flag:'🇺🇸', venue:'Circuit of the Americas',        date:'2026-10-25'},
+  {round:19,id:'rodriguez',    gp:'Mexico City Grand Prix',  flag:'🇲🇽', venue:'Autodromo Hermanos Rodriguez',   date:'2026-11-01'},
+  {round:20,id:'interlagos',   gp:'São Paulo Grand Prix',    flag:'🇧🇷', venue:'Autódromo José Carlos Pace',     date:'2026-11-08'},
+  {round:21,id:'las_vegas',    gp:'Las Vegas Grand Prix',    flag:'🇺🇸', venue:'Las Vegas Strip Circuit',        date:'2026-11-22'},
+  {round:22,id:'losail',       gp:'Qatar Grand Prix',        flag:'🇶🇦', venue:'Lusail International Circuit',    date:'2026-11-29'},
+  {round:23,id:'yas_marina',   gp:'Abu Dhabi Grand Prix',    flag:'🇦🇪', venue:'Yas Marina Circuit',             date:'2026-12-06'},
 ];
 const metaForCircuit = (id) => CALENDAR.find(c => c.id === id) || null;
 const metaForRound   = (r)  => CALENDAR.find(c => Number(c.round) === Number(r)) || null;
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}); } catch { return ''; } };
 
-function buildEmailHtml({ meta, round, grid, prediction, accuracy, nextRace }) {
+function buildEmailHtml({ meta, round, grid, prediction, accuracy, nextRace, roster = {} }) {
   const APP = 'https://f1-predictor-theta.vercel.app';
   const medals = ['🥇', '🥈', '🥉'];
 
-  // grid_data is [{pos, abbr}] only — enrich names/teams from the AI prediction.
-  const predList = (prediction?.top10 || []).slice();
+  // grid_data is [{pos, abbr}] only — names/teams come from the official standings
+  // (roster), AI win chance / predicted position from the AI prediction.
+  // Every text value is escaped here, before it goes into the HTML.
+  const predList = (prediction?.top10 || []).map(p => ({ ...p, abbr: esc(p.abbr), name: esc(p.name), team: esc(p.team) }));
+  grid = (grid || []).map(g => ({ ...g, abbr: esc(g.abbr) }));
   const dmap = {};
-  predList.forEach(p => { if (p.abbr) dmap[p.abbr] = { name: p.name || '', team: p.team || '', winProb: p.winProb ?? null, predPos: p.pos ?? null }; });
-  const info  = a => dmap[a] || { name: '', team: '', winProb: null, predPos: null };
+  predList.forEach(p => { if (p.abbr) dmap[p.abbr] = { name: p.name || '', team: p.team || '', winProb: Number(p.winProb) || null, predPos: Number(p.pos) || null }; });
+  const info  = a => ({ name: '', team: '', winProb: null, predPos: null, ...(dmap[a] || {}),
+                        ...(roster[a] ? { name: esc(roster[a].name), team: esc(roster[a].team) } : {}) });
   const color = a => TEAM_COLORS[normalizeTeam(info(a).team)] || '#888';
 
   const order   = grid.slice().sort((x, y) => x.pos - y.pos);
@@ -215,7 +238,7 @@ function buildEmailHtml({ meta, round, grid, prediction, accuracy, nextRace }) {
     <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;padding:0 28px"><tr><td style="padding:30px 0 26px;text-align:center">
       <a href="${APP}" style="display:inline-block;background:#1a1a1a;border:1px solid #333;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;letter-spacing:1.5px;font-size:13px">Open Full App →</a>
       <div style="font-size:11px;color:#666;margin-top:20px">You're subscribed to F1 Predictor race reports.</div>
-      <div style="font-size:11px;color:#666;margin-top:4px"><a href="${APP}/?unsubscribe=1" style="color:#888">Unsubscribe</a></div>
+      <div style="font-size:11px;color:#666;margin-top:4px"><a href="%%UNSUB_URL%%" style="color:#888">Unsubscribe</a></div>
       <div style="font-size:10px;color:#444;margin-top:14px">© 2026 F1 Predictor · AI race forecasting</div>
     </td></tr></table>`;
 
@@ -245,42 +268,65 @@ export default async function handler(req, res) {
 
   // Brevo only — no domain verification needed, free tier sends to any subscriber
   const BREVO_KEY  = process.env.BREVO_API_KEY;
-  const SB_URL = process.env.SB_URL || process.env.SUPABASE_URL || 'https://zeqxzyisqwemqsvspbyj.supabase.co';
-  const SB_KEY = process.env.SB_SERVICE_KEY || process.env.SB_ANON_KEY || process.env.SUPABASE_KEY;
+  const SB_URL = process.env.SB_URL || 'https://zeqxzyisqwemqsvspbyj.supabase.co';
+  const SB_KEY = process.env.SB_SERVICE_KEY;   // subscribers are only readable with the server key
   const FROM_EMAIL = process.env.NEWSLETTER_FROM_EMAIL || 'ahmoudy365@gmail.com';
   const FROM_NAME  = process.env.NEWSLETTER_FROM_NAME  || 'F1 Predictor';
 
   if (!BREVO_KEY) return res.status(500).json({ error: 'BREVO_API_KEY not set in Vercel env vars' });
-  if (!SB_KEY)    return res.status(500).json({ error: 'No Supabase key found (SB_SERVICE_KEY / SB_ANON_KEY / SUPABASE_KEY)' });
+  if (!SB_KEY)    return res.status(500).json({ error: 'SB_SERVICE_KEY not set in Vercel env vars' });
 
   try {
-    // Find the most recent Race session row
     const sbHeaders = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
-    const sessR = await fetch(`${SB_URL}/rest/v1/sessions?session_name=eq.Race&year=eq.2026&order=fetched_at.desc&limit=1`, { headers: sbHeaders });
-    const sessRows = await sessR.json();
-    if (!sessRows?.length) return res.status(404).json({ error: 'No Race row in Supabase yet' });
-    const sess = sessRows[0];
 
-    // Optional: pull the matching AI prediction + accuracy
-    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${sess.circuit_id}&pred_type=eq.race&order=created_at.desc&limit=1`, { headers: sbHeaders });
-    const predRows = await predR.json();
-    const prediction = predRows?.[0]?.prediction || null;
-    const accuracy   = predRows?.[0]?.accuracy ?? null;
+    // Which race: the most recent finished one on the calendar (or ?circuit=<id>).
+    const today = new Date().toISOString().slice(0, 10);
+    const wanted = String(req.query?.circuit || req.body?.circuit || '');
+    const meta = wanted ? metaForCircuit(wanted)
+                        : CALENDAR.filter(c => c.date <= today).sort((a, b) => b.round - a.round)[0];
+    if (!meta) return res.status(404).json({ error: 'Unknown race' });
+
+    // Its result: newest Race row for that circuit with a usable grid.
+    const sessR = await fetch(`${SB_URL}/rest/v1/sessions?session_name=eq.Race&year=eq.2026&circuit_id=eq.${meta.id}&order=fetched_at.desc&limit=5`, { headers: sbHeaders });
+    const sess = ((await sessR.json()) || []).find(r => (r.grid_data || []).filter(g => g.abbr && g.pos).length >= 10);
+    if (!sess) return res.status(404).json({ error: `No race result saved yet for ${meta.gp}` });
+    const grid = (sess.grid_data || []).filter(g => g.abbr && g.pos).sort((x, y) => x.pos - y.pos);
+
+    // The AI's final pre-race prediction for this race (baselines don't count as AI).
+    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${meta.id}&round=eq.${meta.round}&pred_type=eq.race&select=stage,prediction,accuracy`, { headers: sbHeaders });
+    const best = ((await predR.json()) || [])
+      .filter(p => p.prediction?.top10?.length && !p.prediction._fallback)
+      .sort((x, y) => (PRE_RACE_STAGES.indexOf(x.stage) + 1 || 50) - (PRE_RACE_STAGES.indexOf(y.stage) + 1 || 50))[0];
+    const prediction = best?.prediction || null;
+    const accuracy = prediction
+      ? (best.accuracy ?? calcAccuracy(prediction.top10.map(p => String(p.abbr || '').toUpperCase()), grid.map(g => g.abbr)))
+      : null;
+
+    // Driver names + teams from the official standings.
+    const roster = {};
+    try {
+      const js = await fetch('https://api.jolpi.ca/ergast/f1/2026/driverstandings.json?limit=40', { signal: AbortSignal.timeout(6000) });
+      (await js.json())?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings?.forEach(e => {
+        if (e.Driver?.code) roster[e.Driver.code] = { name: `${e.Driver.givenName} ${e.Driver.familyName}`, team: e.Constructors?.[0]?.name || '' };
+      });
+    } catch { /* names fall back to the prediction */ }
 
     // Get subscribers
-    const subR = await fetch(`${SB_URL}/rest/v1/subscribers?active=eq.true&select=email`, { headers: sbHeaders });
+    const subR = await fetch(`${SB_URL}/rest/v1/subscribers?active=eq.true&select=id,email`, { headers: sbHeaders });
     const subs = await subR.json();
-    if (!subs?.length) return res.status(200).json({ ok: true, sent: 0, message: 'No active subscribers' });
+    if (!Array.isArray(subs)) return res.status(502).json({ error: 'Could not read subscribers' });
+    if (!subs.length) return res.status(200).json({ ok: true, sent: 0, message: 'No active subscribers' });
 
-    const meta = metaForCircuit(sess.circuit_id) || { gp: `Round ${sess.round} · ${String(sess.circuit_id||'').replace(/_/g,' ')}` };
-    const nextRace = metaForRound(Number(sess.round) + 1);
-    const raceName = meta.gp || `Round ${sess.round}`;
-    const html = buildEmailHtml({ meta, round: sess.round, grid: sess.grid_data || [], prediction, accuracy, nextRace });
+    const nextRace = metaForRound(meta.round + 1);
+    const raceName = meta.gp;
+    const html = buildEmailHtml({ meta, round: meta.round, grid, prediction, accuracy, nextRace, roster });
+    const APP = 'https://f1-predictor-theta.vercel.app';
+    const unsubUrl = id => { try { return `${APP}/api/unsubscribe?id=${id}&t=${unsubToken(id)}`; } catch { return `${APP}/?unsubscribe=1`; } };
 
     // Send via Brevo — free tier sends to any subscriber, no domain needed
     let sent = 0, failed = 0;
     const errors = [];
-    const winnerAbbr = (sess.grid_data || []).slice().sort((a,b)=>a.pos-b.pos)[0]?.abbr;
+    const winnerAbbr = grid[0]?.abbr;
     const subject = winnerAbbr ? `🏁 ${raceName}: ${winnerAbbr} wins — full race report` : `🏁 ${raceName} — race report`;
 
     for (const s of subs) {
@@ -296,7 +342,8 @@ export default async function handler(req, res) {
             sender: { name: FROM_NAME, email: FROM_EMAIL },
             to: [{ email: s.email }],
             subject,
-            htmlContent: html,
+            htmlContent: html.replace('%%UNSUB_URL%%', unsubUrl(s.id)),
+            headers: { 'List-Unsubscribe': `<${unsubUrl(s.id)}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
           }),
         });
         if (r.ok) sent++;
@@ -308,6 +355,8 @@ export default async function handler(req, res) {
       ok: true,
       sent, failed, total: subs.length,
       race: raceName,
+      round: meta.round,
+      aiPrediction: prediction ? (best.stage || 'yes') : 'none (no AI prediction for this race)',
       provider: 'brevo',
       ...(errors.length ? { errors } : {}),
     });
