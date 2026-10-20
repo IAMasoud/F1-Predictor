@@ -85,8 +85,12 @@ async function callGroq(key, { system, prompt, temperature }, timeoutMs) {
 }
 
 /* Try each free provider in order until one answers inside the time budget.
+   `waits` is the pause before each pass over the model list: the free tier's "high demand"
+   answers usually clear within a minute, so scheduled calls (which nobody is waiting on)
+   pass longer waits than a visitor's Generate button does.
    Returns { text, model, provider }. Throws AIError (status 429 when every provider is rate-limited). */
-export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000, meta }) {
+export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000,
+  waits = [0, 1500], perAttemptMs = PER_ATTEMPT_MS, meta }) {
   const started = Date.now();
   const left = () => deadlineMs - (Date.now() - started);
   const opts = { system, prompt, temperature, maxTokens };
@@ -94,14 +98,32 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
   const attempts = [];
 
   const geminiKey = process.env.GEMINI_API_KEY;
-  // Two passes over the list: free-tier "high demand" spikes are usually short.
-  for (let pass = 0; geminiKey && pass < 2 && left() >= 4000; pass++) {
-    if (pass === 1) await new Promise(r => setTimeout(r, 1500));
+  const groqKey = process.env.GROQ_API_KEY;
+  let groqTried = false;
+  const tryGroq = async () => {
+    groqTried = true;
+    const t0 = Date.now();
+    try {
+      const out = await callGroq(groqKey, opts, Math.min(left(), perAttemptMs));
+      attempts.push({ model: GROQ_MODEL, ok: true, ms: Date.now() - t0 });
+      await logAttempts(attempts, meta);
+      return out;
+    } catch (e) {
+      errors.push({ who: 'groq', status: e.status, msg: e.message });
+      attempts.push({ model: GROQ_MODEL, ok: false, ms: Date.now() - t0, error: `${e.status || e.name} ${e.message}` });
+      return null;
+    }
+  };
+  for (let pass = 0; geminiKey && pass < waits.length && left() >= 4000; pass++) {
+    if (waits[pass]) {
+      if (left() < waits[pass] + 6000) break;
+      await new Promise(r => setTimeout(r, waits[pass]));
+    }
     for (const m of GEMINI_MODELS) {
       if (left() < 4000) break;
       const t0 = Date.now();
       try {
-        const out = await callGemini(m, geminiKey, opts, Math.min(left(), PER_ATTEMPT_MS));
+        const out = await callGemini(m, geminiKey, opts, Math.min(left(), perAttemptMs));
         console.log(`[ai] ${m.model} ok in ${Date.now() - t0}ms (${out.model})`);
         attempts.push({ model: m.model, ok: true, ms: Date.now() - t0 });
         await logAttempts(attempts, meta);
@@ -112,25 +134,14 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
         attempts.push({ model: m.model, ok: false, ms: Date.now() - t0, error: `${e.status || e.name} ${e.message}` });
         console.warn(`[ai] ${m.model} failed after ${Date.now() - t0}ms: ${e.status || e.name} ${String(e.message).slice(0, 200)}`);
         // A rejected key won't work on another model or pass.
-        if (e.status === 401 || e.status === 403) { pass = 2; break; }
+        if (e.status === 401 || e.status === 403) { pass = waits.length; break; }
       }
     }
+    // The backup provider goes right after the first full pass, before any waiting.
+    if (pass === 0 && groqKey && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
   }
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey && left() >= 4000) {
-    const t0 = Date.now();
-    try {
-      const out = await callGroq(groqKey, opts, left());
-      attempts.push({ model: GROQ_MODEL, ok: true, ms: Date.now() - t0 });
-      await logAttempts(attempts, meta);
-      return out;
-    }
-    catch (e) {
-      errors.push({ who: 'groq', status: e.status, msg: e.message });
-      attempts.push({ model: GROQ_MODEL, ok: false, ms: Date.now() - t0, error: `${e.status || e.name} ${e.message}` });
-    }
-  }
-  await logAttempts(attempts, meta);
+  if (groqKey && !groqTried && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
+  await logAttempts(attempts, meta); // a success returned above, already logged
 
   if (!geminiKey && !groqKey) throw new AIError('No AI key configured on the server', 500);
   console.warn('[ai] all providers failed:', JSON.stringify(errors));

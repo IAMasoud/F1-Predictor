@@ -3,16 +3,18 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-// The Pit Wall admin API. Every request needs a Supabase sign-in token for the admin
-// account (one email, role "admin"); data is read and written with the server key.
+// The Pit Wall admin API. Every request needs a Supabase sign-in token for an admin account
+// (app_metadata.role "admin", or the owner); data is read and written with the server key.
+// Only the owner can add or remove admins and change where the weekly report is delivered.
 import { isAllowedOrigin, clientIp, rateLimited, sb } from './_guard.js';
 import { loadSeason, sessionEndMs } from '../season.js';
 
 export const config = { maxDuration: 60 };
 
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com').toLowerCase();
+const OWNER_EMAIL = (process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com').toLowerCase();
+const OWNER_DEFAULTS = { name: 'Ahmed Masoud', title: 'Founder & CEO' };
 const STAGE_ORDER = ['afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
-const tokens = new Map(); // token → { email, until }
+const tokens = new Map(); // token → { me, until }
 
 // Results are stored as Jolpica driver ids; predictions carry 3-letter codes. Compare codes.
 const ID_ABBR = { antonelli:'ANT', russell:'RUS', leclerc:'LEC', norris:'NOR', hamilton:'HAM', piastri:'PIA', max_verstappen:'VER',
@@ -20,22 +22,63 @@ const ID_ABBR = { antonelli:'ANT', russell:'RUS', leclerc:'LEC', norris:'NOR', h
   hulkenberg:'HUL', stroll:'STR', lindblad:'LIN', arvid_lindblad:'LIN', alonso:'ALO', bottas:'BOT', perez:'PER', tsunoda:'TSU' };
 const toAbbr = id => ID_ABBR[id] || String(id || '').slice(0, 3).toUpperCase();
 
+const lower = v => String(v || '').trim().toLowerCase();
+const clip = (v, n) => String(v ?? '').trim().slice(0, n);
+const EMAIL_RE = /^[^\s@<>"',;]{1,64}@[^\s@<>"',;]+\.[a-z]{2,}$/i;
+const cleanEmail = v => { const e = lower(v); return e.length <= 254 && EMAIL_RE.test(e) ? e : ''; };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function profile(u) {
+  const email = lower(u?.email);
+  const owner = email === OWNER_EMAIL || u?.app_metadata?.role === 'owner';
+  if (!owner && u?.app_metadata?.role !== 'admin') return null;
+  const meta = u.user_metadata || {};
+  return {
+    id: u.id, email, owner, role: owner ? 'owner' : 'admin',
+    name: clip(meta.full_name || (owner ? OWNER_DEFAULTS.name : ''), 60),
+    title: clip(meta.title || (owner ? OWNER_DEFAULTS.title : 'Admin'), 40),
+    created_at: u.created_at || null, last_sign_in_at: u.last_sign_in_at || null,
+  };
+}
+
 async function adminFor(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token || token.length > 4096) return null;
   const hit = tokens.get(token);
-  if (hit && hit.until > Date.now()) return hit.email;
+  if (hit && hit.until > Date.now()) return hit.me;
   const r = await fetch(`${process.env.SB_URL}/auth/v1/user`, {
     headers: { apikey: process.env.SB_SERVICE_KEY, Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(6000),
   }).catch(() => null);
   if (!r?.ok) return null;
-  const u = await r.json().catch(() => ({}));
-  const email = String(u?.email || '').toLowerCase();
-  if (email !== ADMIN_EMAIL || u?.app_metadata?.role !== 'admin') return null;
+  const me = profile(await r.json().catch(() => ({})));
+  if (!me) return null;
   if (tokens.size > 200) tokens.clear();
-  tokens.set(token, { email, until: Date.now() + 60000 });
-  return email;
+  tokens.set(token, { me, until: Date.now() + 60000 });
+  return me;
+}
+
+/* Supabase Auth admin API (service key): list, create, update and delete sign-in accounts. */
+async function authAdmin(path, { method = 'GET', body } = {}) {
+  const key = process.env.SB_SERVICE_KEY;
+  const r = await fetch(`${process.env.SB_URL}/auth/v1/admin/${path}`, {
+    method, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(10000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.msg || j.message || j.error_description || `Auth error ${r.status}`); e.status = r.status; e.code = j.error_code || j.code; throw e; }
+  return j;
+}
+async function allUsers() {
+  const out = [];
+  for (let page = 1; page <= 10; page++) {
+    const j = await authAdmin(`users?page=${page}&per_page=200`);
+    const users = j.users || [];
+    out.push(...users);
+    if (users.length < 200) break;
+  }
+  return out;
 }
 
 async function json(path, opts) {
@@ -45,6 +88,17 @@ async function json(path, opts) {
   return t ? JSON.parse(t) : null;
 }
 const rpc = (fn, body = {}) => json(`rpc/${fn}`, { method: 'POST', body });
+
+// The ops edge function: daily scan, weekly report, delivery test.
+async function ops(task) {
+  const r = await fetch(`${process.env.SB_URL}/functions/v1/ops?task=${task}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${process.env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+    body: '{}', signal: AbortSignal.timeout(55000),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `The ops job answered ${r.status}`);
+  return body;
+}
 
 // ── season numbers for the AI, from the saved predictions ──
 function aiSeason(preds) {
@@ -105,9 +159,41 @@ async function weekend(preds) {
       : [['FP2', at(r.fp2Date, r.fp2UTC)], ['FP3', at(r.fp3Date, r.fp3UTC)]]),
     ['Quali', at(r.qualiDate, r.qualiUTC)], ['Race', at(r.date, r.raceUTC)],
   ].map(([name, start]) => ({ name, start }));
-  const log = last ? await json(`newsletter_log?circuit_id=eq.${last.circuitId}&season=eq.${season}&order=ts.desc&limit=1`).catch(() => []) : [];
+  const log = last ? await json(`newsletter_log?round=eq.${last.round}&season=eq.${season}&sent=gt.0&order=ts.desc&limit=1`).catch(() => []) : [];
   const pick = r => r && { round: r.round, name: r.name, circuit: r.circuit, circuitId: r.circuitId, date: r.date, sprint: r.sprint, sessions: sessions(r), calls: calls(r) };
-  return { season, next: pick(next), last: last && { ...pick(last), newsletter: log?.[0] || null } };
+  return { season, next: pick(next), last: last && { ...pick(last), ended: raceEndMs(last), newsletter: log?.[0] || null } };
+}
+
+/* Where the weekly report goes. Tokens never leave the server; the page only sees what is set. */
+const SETTINGS = {
+  telegram_token: /^\d{5,15}:[A-Za-z0-9_-]{30,64}$/,
+  telegram_chat: /^-?\d{3,20}$/,
+  discord_webhook: /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,100}$/,
+  whatsapp_phone: /^\+?\d{8,15}$/,
+  whatsapp_key: /^[A-Za-z0-9]{4,24}$/,
+};
+async function readSettings() {
+  const rows = await json('app_settings?select=key,value');
+  return Object.fromEntries((rows || []).map(r => [r.key, r.value]));
+}
+function deliveryStatus(s) {
+  const tail = v => (v ? `…${String(v).slice(-3)}` : null);
+  return {
+    telegram: { on: !!(s.telegram_token && s.telegram_chat), bot: !!s.telegram_token, chat: tail(s.telegram_chat) },
+    discord: { on: !!s.discord_webhook },
+    whatsapp: { on: !!(s.whatsapp_phone && s.whatsapp_key), phone: tail(s.whatsapp_phone) },
+  };
+}
+
+async function signedReportUrl(path) {
+  const key = process.env.SB_SERVICE_KEY;
+  const r = await fetch(`${process.env.SB_URL}/storage/v1/object/sign/reports/${path.split('/').map(encodeURIComponent).join('/')}`, {
+    method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn: 3600 }), signal: AbortSignal.timeout(8000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.signedURL) throw new Error('Could not open that report');
+  return `${process.env.SB_URL}/storage/v1${j.signedURL}`;
 }
 
 export default async function handler(req, res) {
@@ -116,17 +202,18 @@ export default async function handler(req, res) {
   if (rateLimited(`admin:${ip}`, 120, 60 * 1000)) return res.status(429).json({ error: 'Too many requests' });
   if (req.method === 'POST' && !isAllowedOrigin(req)) return res.status(403).json({ error: 'Forbidden' });
 
-  const email = await adminFor(req);
-  if (!email) return res.status(401).json({ error: 'Sign in first' });
+  const me = await adminFor(req);
+  if (!me) return res.status(401).json({ error: 'Sign in first' });
 
   const view = String(req.query?.view || '');
   const action = String(req.query?.action || '');
   const days = Math.min(Math.max(parseInt(req.query?.days, 10) || 30, 1), 365);
   const self = `https://${req.headers.host}`;
+  const ownerOnly = () => res.status(403).json({ error: 'Only the owner can do this' });
 
   try {
     if (req.method === 'GET') {
-      if (view === 'me') return res.json({ email });
+      if (view === 'me') return res.json({ id: me.id, email: me.email, name: me.name, title: me.title, role: me.role, owner: me.owner });
       if (view === 'overview') {
         const [traffic, subs, push, preds, jobs] = await Promise.all([
           rpc('admin_overview', { days }),
@@ -136,9 +223,10 @@ export default async function handler(req, res) {
           rpc('admin_job_status'),
         ]);
         const w = await weekend(preds);
+        const health = await json('health_checks?select=ts,ok,failed&order=ts.desc&limit=1').catch(() => []);
         return res.json({ traffic, subscribers: subs.length, push: push.length, ai: aiSeason(preds),
           predictions: { total: preds.length, baselines: preds.filter(p => p.fallback).length, hidden: preds.filter(p => p.hidden).length },
-          jobs, weekend: w });
+          jobs, weekend: w, health: health?.[0] || null });
       }
       if (view === 'ai') {
         const [calls, preds, jobs] = await Promise.all([rpc('admin_ai', { days }), predictionsList(), rpc('admin_job_status')]);
@@ -159,35 +247,169 @@ export default async function handler(req, res) {
           sends: log,
         });
       }
+      if (view === 'races') {
+        // Finished races this season, newest first, with every race-report send.
+        const { season, races } = await loadSeason();
+        const now = Date.now();
+        const log = await json(`newsletter_log?season=eq.${season}&select=round,ts,sent,failed,kind&order=ts.desc`);
+        return res.json({ season, races: races.filter(r => raceEndMs(r) <= now).reverse()
+          .map(r => ({ round: r.round, name: r.name, circuitId: r.circuitId, date: r.date, sends: (log || []).filter(l => l.round === r.round && l.sent > 0) })) });
+      }
+      if (view === 'admins') {
+        const list = (await allUsers()).map(profile).filter(Boolean)
+          .sort((a, b) => (b.owner - a.owner) || String(a.created_at).localeCompare(String(b.created_at)));
+        return res.json({ admins: list, you: me.id, canManage: me.owner });
+      }
+      if (view === 'health') {
+        const [scans, log, reports, settings] = await Promise.all([
+          json('health_checks?select=*&order=ts.desc&limit=14'),
+          json('maintenance_log?select=*&order=ts.desc&limit=80'),
+          json('weekly_reports?select=id,created_at,week_start,week_end,summary,delivered&order=created_at.desc&limit=12'),
+          readSettings(),
+        ]);
+        return res.json({ scans, log, reports, delivery: deliveryStatus(settings), canManage: me.owner });
+      }
       return res.status(400).json({ error: 'Unknown view' });
     }
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+
       if (action === 'hide') {
-        if (!/^[0-9a-f-]{36}$/i.test(String(body.id || ''))) return res.status(400).json({ error: 'Bad id' });
+        if (!UUID_RE.test(String(body.id || ''))) return res.status(400).json({ error: 'Bad id' });
         await json(`predictions?id=eq.${body.id}`, { method: 'PATCH', body: { hidden: body.hidden !== false }, prefer: 'return=minimal' });
         return res.json({ ok: true });
       }
+
       if (action === 'run') {
         const job = String(body.job || '');
         const fn = u => fetch(u, { method: 'POST', signal: AbortSignal.timeout(55000) }).then(r => r.json());
         if (job === 'scoring') return res.json(await fn(`${process.env.SB_URL}/functions/v1/auto-results${body.all ? '?all=1' : ''}`));
         if (job === 'sync') return res.json(await fn(`${process.env.SB_URL}/functions/v1/supabase-sync`));
         if (job === 'predictions') {
-          const r = await fetch(`${self}/api/push-send?mode=predictions`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` }, signal: AbortSignal.timeout(55000) });
-          return res.json(await r.json());
+          // When the free AI is busy the job keeps retrying for a few minutes, longer than this page waits.
+          try {
+            const r = await fetch(`${self}/api/push-send?mode=predictions`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` }, signal: AbortSignal.timeout(55000) });
+            return res.json(await r.json().catch(() => ({ ok: r.ok })));
+          } catch { return res.json({ ok: true, working: true }); }
         }
+        if (job === 'scan') return res.json(await ops('scan'));
+        if (job === 'weekly') return res.json(await ops('weekly'));
         return res.status(400).json({ error: 'Unknown job' });
       }
+
+      // Race report: preview it, send a test to yourself, or send it to every subscriber.
       if (action === 'newsletter') {
         const circuit = /^[a-z_]{3,20}$/.test(String(body.circuit || '')) ? body.circuit : '';
-        const q = new URLSearchParams({ ...(circuit ? { circuit } : {}), ...(body.send === true ? {} : { preview: '1' }) });
+        const mode = ['preview', 'test', 'send'].includes(body.mode) ? body.mode : body.send === true ? 'send' : 'preview';
+        const q = new URLSearchParams({ ...(circuit ? { circuit } : {}),
+          ...(mode === 'preview' ? { preview: '1' } : mode === 'test' ? { test: '1' } : {}),
+          ...(mode === 'send' && body.force === true ? { force: '1' } : {}) });
         const r = await fetch(`${self}/api/send-newsletter?${q}`, {
           method: 'POST', headers: { Authorization: `Bearer ${process.env.CRON_SECRET}`, 'Content-Type': 'application/json' },
-          body: '{}', signal: AbortSignal.timeout(55000),
+          body: JSON.stringify(mode === 'test' ? { to: me.email } : {}), signal: AbortSignal.timeout(58000),
         });
-        return res.status(r.status).json(await r.json());
+        return res.status(r.status).json(await r.json().catch(() => ({ error: 'The email service did not answer' })));
+      }
+
+      // Race report list: add or remove an email address.
+      if (action === 'sub_add') {
+        const email = cleanEmail(body.email);
+        if (!email) return res.status(400).json({ error: 'That doesn’t look like an email address' });
+        const had = await json(`subscribers?email=eq.${encodeURIComponent(email)}&select=id,active`);
+        await json('subscribers?on_conflict=email', { method: 'POST', body: { email, active: true }, prefer: 'resolution=merge-duplicates,return=minimal' });
+        return res.json({ ok: true, status: had?.length ? (had[0].active ? 'already' : 'back') : 'added' });
+      }
+      if (action === 'sub_remove') {
+        const id = parseInt(body.id, 10);
+        if (!(id > 0)) return res.status(400).json({ error: 'Bad id' });
+        await json(`subscribers?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+        return res.json({ ok: true });
+      }
+
+      // Admins (owner only). New admins sign in with the email and password set here.
+      if (action === 'admin_create') {
+        if (!me.owner) return ownerOnly();
+        const email = cleanEmail(body.email), name = clip(body.name, 60), title = clip(body.title || 'Admin', 40);
+        const password = String(body.password || '');
+        if (!email) return res.status(400).json({ error: 'Enter a valid email address' });
+        if (!name) return res.status(400).json({ error: 'Enter their name' });
+        if (password.length < 10 || password.length > 72) return res.status(400).json({ error: 'The password needs 10 to 72 characters' });
+        if (email === OWNER_EMAIL) return res.status(400).json({ error: 'That is your own account' });
+        const user_metadata = { full_name: name, title };
+        try {
+          const u = await authAdmin('users', { method: 'POST', body: { email, password, email_confirm: true, app_metadata: { role: 'admin' }, user_metadata } });
+          return res.json({ ok: true, id: u.id });
+        } catch (e) {
+          if (e.status === 422 && /already|exists|registered/i.test(e.message)) {
+            const u = (await allUsers()).find(x => lower(x.email) === email);
+            if (!u) throw e;
+            await authAdmin(`users/${u.id}`, { method: 'PUT', body: { password, email_confirm: true, ban_duration: 'none',
+              app_metadata: { ...(u.app_metadata || {}), role: 'admin' }, user_metadata: { ...(u.user_metadata || {}), ...user_metadata } } });
+            return res.json({ ok: true, id: u.id, existing: true });
+          }
+          if (/password/i.test(e.message)) return res.status(400).json({ error: e.message });
+          throw e;
+        }
+      }
+      if (action === 'admin_remove') {
+        if (!me.owner) return ownerOnly();
+        const id = String(body.id || '');
+        if (!UUID_RE.test(id)) return res.status(400).json({ error: 'Bad id' });
+        if (id === me.id) return res.status(400).json({ error: 'You can’t remove your own account' });
+        const p = profile(await authAdmin(`users/${id}`));
+        if (!p) return res.status(404).json({ error: 'That account is not an admin' });
+        if (p.owner) return res.status(400).json({ error: 'The owner can’t be removed' });
+        await authAdmin(`users/${id}`, { method: 'DELETE' });
+        for (const [t, v] of tokens) if (v.me.id === id) tokens.delete(t);
+        return res.json({ ok: true });
+      }
+
+      // Weekly report delivery (owner only). An empty value clears that setting.
+      if (action === 'settings') {
+        if (!me.owner) return ownerOnly();
+        const rows = [], clear = [];
+        for (const [k, re] of Object.entries(SETTINGS)) {
+          if (!(k in body)) continue;
+          const v = String(body[k] ?? '').trim().replace(/\s+/g, '');
+          if (!v) { clear.push(k); continue; }
+          if (!re.test(v)) return res.status(400).json({ error: `That ${k.replace('_', ' ')} doesn’t look right` });
+          rows.push({ key: k, value: v, updated_at: new Date().toISOString() });
+        }
+        if (rows.length) await json('app_settings?on_conflict=key', { method: 'POST', body: rows, prefer: 'resolution=merge-duplicates,return=minimal' });
+        if (clear.length) await json(`app_settings?key=in.(${clear.join(',')})`, { method: 'DELETE', prefer: 'return=minimal' });
+        return res.json({ ok: true, delivery: deliveryStatus(await readSettings()) });
+      }
+      // Telegram: after messaging the bot once, find that chat and save it.
+      if (action === 'telegram_chat') {
+        if (!me.owner) return ownerOnly();
+        const s = await readSettings();
+        if (!s.telegram_token) return res.status(400).json({ error: 'Save the bot token first' });
+        const r = await fetch(`https://api.telegram.org/bot${s.telegram_token}/getUpdates?limit=50`, { signal: AbortSignal.timeout(10000) });
+        const j = await r.json().catch(() => ({}));
+        if (!j.ok) return res.status(400).json({ error: 'Telegram did not accept that bot token' });
+        const msg = (j.result || []).map(u => u.message || u.channel_post || u.my_chat_member).filter(Boolean).pop();
+        const chat = msg?.chat?.id;
+        if (!chat) return res.status(404).json({ error: 'No message found yet. Open your bot in Telegram, press Start or send it any message, then try again.' });
+        await json('app_settings?on_conflict=key', { method: 'POST', body: [{ key: 'telegram_chat', value: String(chat), updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' });
+        return res.json({ ok: true, delivery: deliveryStatus(await readSettings()) });
+      }
+      if (action === 'notify_test') {
+        if (!me.owner) return ownerOnly();
+        return res.json(await ops('test'));
+      }
+      if (action === 'report_link') {
+        const id = parseInt(body.id, 10);
+        if (!(id > 0)) return res.status(400).json({ error: 'Bad id' });
+        const row = (await json(`weekly_reports?id=eq.${id}&select=path`))?.[0];
+        if (!row) return res.status(404).json({ error: 'No such report' });
+        return res.json({ url: await signedReportUrl(row.path) });
+      }
+      if (action === 'log_resolve') {
+        const id = parseInt(body.id, 10);
+        if (!(id > 0)) return res.status(400).json({ error: 'Bad id' });
+        await json(`maintenance_log?id=eq.${id}`, { method: 'PATCH', body: { resolved: true, resolved_ts: new Date().toISOString() }, prefer: 'return=minimal' });
+        return res.json({ ok: true });
       }
       return res.status(400).json({ error: 'Unknown action' });
     }

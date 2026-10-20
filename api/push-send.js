@@ -7,6 +7,12 @@ import webpush from 'web-push';
 import { generateJSON } from './_ai.js';
 import { loadSeason, FALLBACK_SEASON } from '../season.js';
 
+// Scheduled runs wait patiently for the free AI (nobody is watching a spinner), within one run's time.
+export const config = { maxDuration: 300 };
+const RUN_BUDGET_MS = 280000;
+let RUN_STARTED = Date.now();
+const runLeft = () => RUN_BUDGET_MS - (Date.now() - RUN_STARTED);
+
 /* The season calendar (rounds, session times, OpenF1 locations) comes from the
    shared season.js, which reads the official schedule. Set per run in the handler. */
 let RACES = [];
@@ -251,12 +257,18 @@ Respond ONLY with valid JSON, no markdown:
 
 /* ───────── Call the free AI (Gemini free tier, optional Groq backup) ───────── */
 async function callAI(prompt, meta) {
+  // Up to ~3 minutes per call: a full pass over the free models, then again after 10 s,
+  // 30 s and 60 s. If it still fails, the caller saves a baseline and the 15-minute job retries it.
+  const budget = Math.min(180000, runLeft() - 15000);
+  if (budget < 20000) throw new Error('No time left in this run; the next run will retry');
   const { json } = await generateJSON({
     meta,
     system: 'You are an expert F1 race analyst. Always respond with valid JSON only — no markdown, no preamble.',
     prompt,
     temperature: 0.7,
-    deadlineMs: 25000,
+    deadlineMs: budget,
+    waits: [0, 10000, 30000, 60000],
+    perAttemptMs: 45000,
   });
   return json;
 }
@@ -376,6 +388,7 @@ async function ensurePrediction(SB_URL, SB_KEY, race, stage, predType, sqGrid, q
 
 /* ───────── Main handler ───────── */
 export default async function handler(req, res) {
+  RUN_STARTED = Date.now();
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && req.headers['authorization'] !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: 'Unauthorized' });

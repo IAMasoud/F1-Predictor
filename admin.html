@@ -125,6 +125,42 @@
     .call{flex-wrap:wrap}.acts{justify-content:flex-start}
     .lamps{grid-template-columns:repeat(3,1fr)}
   }
+  /* sign in: labels, show-password, links */
+  .lab{display:block;margin-top:14px;font:500 13px 'Barlow';color:var(--ink-2)}
+  .lab+.field,.lab+.pw .field{margin-top:6px}
+  .pw{position:relative;display:block}.pw .field{padding-right:64px}
+  .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);height:32px;padding:0 10px;border:0;border-radius:7px;background:none;color:var(--ink-2);font:600 12px 'Barlow'}
+  .pw .field{margin-top:6px}.pw .eye{top:calc(50% + 3px)}
+  .link{display:inline-block;margin-top:12px;padding:6px 0;border:0;background:none;color:var(--ink-2);font:600 13px 'Barlow';text-decoration:underline;text-underline-offset:3px}
+  .msg.ok{color:var(--gain)}
+  /* who is signed in */
+  .who{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .who b{font:600 15px 'Barlow';color:var(--ink)}
+  .badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;background:var(--lamp);color:#fff;font:700 10.5px 'Barlow';letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+  .badge.quiet{background:var(--panel-2);color:var(--ink-2)}
+  .me small{display:block;margin-top:4px;color:var(--ink-3);font-size:12px;word-break:break-all}
+  /* forms inside panels */
+  .form{display:grid;gap:10px;margin-top:12px}
+  .form .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .form .field{margin-top:4px;height:40px}
+  .form label{font:500 13px 'Barlow';color:var(--ink-2)}
+  .inline{display:flex;gap:8px;margin-top:12px}.inline .field{margin-top:0;height:38px;flex:1;min-width:0}
+  .help{font:500 13px/1.5 'Barlow';color:var(--ink-3);margin-top:8px}
+  .help b{color:var(--ink-2);font-weight:600}
+  ol.steps{margin:8px 0 0 18px;font:500 13px/1.55 'Barlow';color:var(--ink-2)}
+  .chan{padding:14px 0;border-top:1px solid var(--line)}.chan:first-of-type{border-top:0}
+  .chan h3{font:600 14px 'Barlow';display:flex;align-items:center;gap:8px}
+  .check{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font:500 14px 'Barlow'}
+  .check:first-child{border-top:0}.check .dot{margin-top:5px}
+  .check small{display:block;color:var(--ink-3);font-size:12.5px;margin-top:2px}
+  .tag.fix{background:var(--gain-bg);color:var(--gain)}.tag.found{background:var(--loss-bg);color:var(--loss)}
+  dialog .row-end{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+  dialog select.pill{max-width:100%}
+  #app{grid-template-columns:248px 1fr}
+  @media (max-width:760px){
+    .me{display:block;margin-top:4px;padding:10px 8px 12px}
+    .me .row{flex-wrap:wrap}
+  }
   @media (prefers-reduced-motion:reduce){button:active:not(:disabled){transform:none}.toast{transition:opacity 180ms ease}}
 </style>
 </head>
@@ -133,18 +169,32 @@
 <section id="login">
   <div class="login">
     <svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg>
-    <h1>Pit Wall</h1>
-    <p id="loginText">The F1 Predictor admin. Enter your email and we'll send you a 6-digit code.</p>
-    <form id="emailForm">
-      <input class="field" id="email" type="email" autocomplete="email" placeholder="Your email" required>
-      <button class="btn red block" type="submit">Send me a code</button>
-    </form>
-    <form id="codeForm" hidden>
-      <input class="field code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="······" required>
+    <h1 id="loginTitle">Pit Wall</h1>
+    <p id="loginText">The F1 Predictor admin. Sign in with your email and password.</p>
+    <form id="signInForm" novalidate>
+      <label class="lab" for="email">Email</label>
+      <input class="field" id="email" type="email" autocomplete="username" inputmode="email" required>
+      <label class="lab" for="password">Password</label>
+      <div class="pw"><input class="field" id="password" type="password" autocomplete="current-password" required><button class="eye" type="button" data-eye="password" aria-label="Show password">Show</button></div>
       <button class="btn red block" type="submit">Sign in</button>
-      <button class="btn block" type="button" id="backToEmail">Use a different email</button>
+      <button class="link" type="button" id="forgotLink">Forgot password?</button>
     </form>
-    <div class="msg" id="loginMsg" role="status"></div>
+    <form id="forgotForm" novalidate hidden>
+      <label class="lab" for="fEmail">Email</label>
+      <input class="field" id="fEmail" type="email" autocomplete="email" inputmode="email" required>
+      <button class="btn red block" type="submit">Email me a reset link</button>
+      <button class="link" type="button" data-back>Back to sign in</button>
+    </form>
+    <form id="resetForm" novalidate hidden>
+      <label class="lab" for="newPw">New password</label>
+      <div class="pw"><input class="field" id="newPw" type="password" autocomplete="new-password" minlength="10" maxlength="72" required><button class="eye" type="button" data-eye="newPw" aria-label="Show password">Show</button></div>
+      <label class="lab" for="newPw2">Type it again</label>
+      <input class="field" id="newPw2" type="password" autocomplete="new-password" minlength="10" maxlength="72" required>
+      <p class="note" style="margin-top:8px">At least 10 characters. A few words together is easy to remember and hard to guess.</p>
+      <button class="btn red block" type="submit">Save password and sign in</button>
+      <button class="link" type="button" data-back>Back to sign in</button>
+    </form>
+    <div class="msg" id="loginMsg" role="status" aria-live="polite"></div>
   </div>
 </section>
 
@@ -152,7 +202,10 @@
   <aside>
     <div class="brand"><svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg><div><b>PIT WALL</b><small>F1 Predictor admin</small></div></div>
     <nav class="side" id="nav"></nav>
-    <div class="me"><b id="meEmail"></b>Signed in
+    <div class="me">
+      <div class="who"><b id="meName"></b><span class="badge" id="meTitle"></span></div>
+      <small id="meEmail"></small>
+      <div class="row"><button class="btn" id="pwBtn" type="button">Change password</button></div>
       <div class="row"><button class="btn" id="themeBtn" type="button">Light mode</button><button class="btn" id="signOut" type="button">Sign out</button></div>
     </div>
   </aside>
@@ -167,23 +220,25 @@
 const SB_URL = 'https://zeqxzyisqwemqsvspbyj.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcXh6eWlzcXdlbXFzdnNwYnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODM0MjUsImV4cCI6MjA5MzU1OTQyNX0.uDzYrylvgomvGiSH886LJ2zIO14VZpR-f12vWRzW2M0';
 const HOME_PAGE = 'overview';  // first page after signing in
+const MIN_PW = 10;
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => (n == null ? '—' : Number(n).toLocaleString());
 const store = { get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch{ return null; } }, set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }, del(k){ try{ localStorage.removeItem(k); }catch{} } };
+let ME = null;
 
 /* ── theme ── */
 function setTheme(t){ document.documentElement.dataset.theme = t; store.set('pw_theme', t); $('themeBtn').textContent = t === 'dark' ? 'Light mode' : 'Dark mode'; }
 setTheme(store.get('pw_theme') || 'dark');
 $('themeBtn').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 
-function toast(text){ const t = $('toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600); }
+function toast(text){ const t = $('toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3200); }
 
-/* ── sign in: Supabase email code ── */
-async function gotrue(path, body){
-  const r = await fetch(`${SB_URL}/auth/v1/${path}`, { method:'POST', headers:{ apikey:SB_ANON, 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+/* ── sign in: Supabase email + password ── */
+async function gotrue(path, body, { method = 'POST', bearer } = {}){
+  const r = await fetch(`${SB_URL}/auth/v1/${path}`, { method, headers:{ apikey:SB_ANON, 'Content-Type':'application/json', ...(bearer ? { Authorization:`Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if(!r.ok) throw new Error(j.msg || j.error_description || j.message || `Error ${r.status}`);
+  if(!r.ok){ const e = new Error(j.msg || j.error_description || j.message || `Error ${r.status}`); e.status = r.status; e.code = j.error_code || j.error || ''; throw e; }
   return j;
 }
 function saveSession(j){ store.set('pw_session', { access: j.access_token, refresh: j.refresh_token, until: Date.now() + (j.expires_in || 3600) * 1000 }); }
@@ -194,34 +249,102 @@ async function token(){
   try{ const j = await gotrue('token?grant_type=refresh_token', { refresh_token: s.refresh }); saveSession(j); return j.access_token; }
   catch{ store.del('pw_session'); return null; }
 }
-$('emailForm').onsubmit = async e => {
+const loginMsg = (text, kind = '') => { const m = $('loginMsg'); m.className = `msg ${kind}`; m.textContent = text || ''; };
+function loginView(v){
+  $('signInForm').hidden = v !== 'signin'; $('forgotForm').hidden = v !== 'forgot'; $('resetForm').hidden = v !== 'reset';
+  $('loginTitle').textContent = v === 'reset' ? 'New password' : v === 'forgot' ? 'Forgot password' : 'Pit Wall';
+  $('loginText').textContent = v === 'reset' ? 'Choose a new password for the admin.'
+    : v === 'forgot' ? 'Enter your admin email. We’ll send a link to choose a new password.'
+    : 'The F1 Predictor admin. Sign in with your email and password.';
+  loginMsg('');
+  const first = { signin:'email', forgot:'fEmail', reset:'newPw' }[v]; setTimeout(() => $(first)?.focus(), 30);
+}
+document.querySelectorAll('[data-eye]').forEach(b => b.onclick = () => {
+  const f = $(b.dataset.eye), show = f.type === 'password';
+  f.type = show ? 'text' : 'password'; b.textContent = show ? 'Hide' : 'Show'; b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  if(b.dataset.eye === 'newPw') $('newPw2').type = f.type;
+});
+$('forgotLink').onclick = () => { $('fEmail').value = $('email').value.trim(); loginView('forgot'); };
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { history.replaceState(null, '', location.pathname); loginView('signin'); });
+
+$('signInForm').onsubmit = async e => {
   e.preventDefault();
-  const email = $('email').value.trim(), msg = $('loginMsg');
-  msg.className = 'msg'; msg.textContent = 'Sending…';
+  const email = $('email').value.trim(), password = $('password').value;
+  if(!email || !password) return loginMsg('Enter your email and password.', 'err');
+  const btn = e.submitter || e.target.querySelector('[type=submit]'); btn.disabled = true;
+  loginMsg('Signing in…');
   try{
-    await gotrue('otp', { email, create_user: false });
-    $('emailForm').hidden = true; $('codeForm').hidden = false; $('code').focus();
-    $('loginText').textContent = `We sent a code to ${email}. It works for 10 minutes.`;
-    msg.textContent = '';
+    saveSession(await gotrue('token?grant_type=password', { email, password }));
+    $('password').value = ''; loginMsg(''); await start();
   }catch(err){
-    msg.className = 'msg err';
-    msg.textContent = /rate|seconds/i.test(err.message) ? 'Too many codes asked for. Wait a minute and try again.' : 'Could not send a code to that email.';
-  }
+    loginMsg(err.status === 429 ? 'Too many tries. Wait a few minutes, then try again.'
+      : /invalid/i.test(err.message) || err.status === 400 ? 'Wrong email or password.' : 'Could not sign in right now. Try again in a moment.', 'err');
+  }finally{ btn.disabled = false; }
 };
-$('codeForm').onsubmit = async e => {
+$('forgotForm').onsubmit = async e => {
   e.preventDefault();
-  const msg = $('loginMsg');
-  msg.className = 'msg'; msg.textContent = 'Checking…';
+  const email = $('fEmail').value.trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return loginMsg('Enter your email address.', 'err');
+  const btn = e.submitter || e.target.querySelector('[type=submit]'); btn.disabled = true;
+  loginMsg('Sending…');
   try{
-    const j = await gotrue('verify', { type:'email', email: $('email').value.trim(), token: $('code').value.trim() });
-    saveSession(j); msg.textContent = ''; start();
-  }catch{ msg.className = 'msg err'; msg.textContent = 'That code is wrong or has expired.'; }
+    await gotrue('recover', { email });
+    loginMsg(`If ${email} is an admin, a reset link is on its way. It works for one hour. Check your spam folder if it doesn’t arrive.`, 'ok');
+  }catch(err){
+    loginMsg(err.status === 429 ? 'Too many emails asked for. Wait an hour, then try again.' : 'Could not send the email right now. Try again in a moment.', 'err');
+  }finally{ btn.disabled = false; }
 };
-$('backToEmail').onclick = () => { $('codeForm').hidden = true; $('emailForm').hidden = false; $('loginText').textContent = "Enter your email and we'll send you a 6-digit code."; };
+/* The reset email links to /admin#reset=<token>. The token is only used when the form is sent,
+   so a mail scanner opening the link can't use it up. */
+let recovery = null;
+$('resetForm').onsubmit = async e => {
+  e.preventDefault();
+  const pw = $('newPw').value, pw2 = $('newPw2').value;
+  if(pw.length < MIN_PW) return loginMsg(`The password needs at least ${MIN_PW} characters.`, 'err');
+  if(pw !== pw2) return loginMsg('The two passwords are different.', 'err');
+  const btn = e.submitter || e.target.querySelector('[type=submit]'); btn.disabled = true;
+  loginMsg('Saving…');
+  try{
+    if(!recovery){
+      const hash = new URLSearchParams(location.hash.slice(1)).get('reset');
+      try{ recovery = await gotrue('verify', { type:'recovery', token_hash: hash }); }
+      catch{ loginMsg('This reset link has expired or was already used. Ask for a new one.', 'err'); $('fEmail').value = ''; setTimeout(() => loginView('forgot'), 1800); return; }
+    }
+    await gotrue('user', { password: pw }, { method:'PUT', bearer: recovery.access_token });
+    saveSession(recovery); recovery = null;
+    history.replaceState(null, '', location.pathname);
+    $('newPw').value = $('newPw2').value = '';
+    toast('Password saved. You’re signed in.'); await start();
+  }catch(err){
+    loginMsg(err.code === 'same_password' ? 'That is your current password. Choose a different one.'
+      : err.code === 'weak_password' || /password/i.test(err.message) ? err.message : 'Could not save the password. Try again.', 'err');
+  }finally{ btn.disabled = false; }
+};
 $('signOut').onclick = async () => {
   const t = await token();
   if(t) fetch(`${SB_URL}/auth/v1/logout`, { method:'POST', headers:{ apikey:SB_ANON, Authorization:`Bearer ${t}` } }).catch(()=>{});
-  store.del('pw_session'); location.reload();
+  store.del('pw_session'); location.replace(location.pathname);
+};
+$('pwBtn').onclick = () => {
+  const dlg = $('dlg'), body = $('dlgBody');
+  body.innerHTML = `<h2 style="font:600 17px Barlow">Change your password</h2>
+    <form id="cpForm" class="form" novalidate>
+      <label for="cp1">New password<input class="field" id="cp1" type="password" autocomplete="new-password" minlength="${MIN_PW}" maxlength="72" required></label>
+      <label for="cp2">Type it again<input class="field" id="cp2" type="password" autocomplete="new-password" minlength="${MIN_PW}" maxlength="72" required></label>
+      <p class="note">At least ${MIN_PW} characters.</p>
+      <div class="msg" id="cpMsg" role="status"></div>
+      <div class="row-end"><button class="btn" type="button" id="cpClose">Cancel</button><button class="btn red" type="submit">Save password</button></div>
+    </form>`;
+  dlg.showModal(); $('cp1').focus();
+  $('cpClose').onclick = () => dlg.close();
+  $('cpForm').onsubmit = async e => {
+    e.preventDefault();
+    const a = $('cp1').value, b = $('cp2').value, m = $('cpMsg');
+    if(a.length < MIN_PW){ m.className = 'msg err'; m.textContent = `At least ${MIN_PW} characters.`; return; }
+    if(a !== b){ m.className = 'msg err'; m.textContent = 'The two passwords are different.'; return; }
+    try{ await gotrue('user', { password: a }, { method:'PUT', bearer: await token() }); dlg.close(); toast('Password changed'); }
+    catch(err){ m.className = 'msg err'; m.textContent = err.code === 'same_password' ? 'That is already your password.' : err.message; }
+  };
 };
 
 /* ── API ── */
@@ -233,7 +356,7 @@ async function api(params, body){
     : { headers:{ Authorization:`Bearer ${t}` } });
   if(r.status === 401){ store.del('pw_session'); showLogin('Your session ended. Sign in again.'); throw new Error('signed out'); }
   const j = await r.json().catch(() => ({}));
-  if(!r.ok) throw new Error(j.error || `Error ${r.status}`);
+  if(!r.ok){ const e = new Error(j.error || `Error ${r.status}`); e.status = r.status; e.data = j; throw e; }
   return j;
 }
 
@@ -244,8 +367,10 @@ const ICON = {
   predictions:'<path d="M5 3v18M5 4h11l-2 4 2 4H5"/>',
   ai:'<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
   subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
+  health:'<path d="M12 21s-7-4.4-9-9.2C1.6 8.3 3.6 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.4 3.3 4 6.8C19 16.6 12 21 12 21z"/>',
+  team:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .3 5.5 2.6 5.5 5.8"/>',
 };
-const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email']];
+const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['team','Admins']];
 function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
 function lineChart(points, { h = 260 } = {}){
   const w = 640, L = 34, B = 22, T = 10;
@@ -261,7 +386,13 @@ function lineChart(points, { h = 260 } = {}){
 }
 const STAGE = { beforeSprintQ:'Before sprint quali', afterSprintQ:'After sprint quali', afterSprint:'After sprint', beforeQuali:'Before quali', afterQuali:'After quali', final:'After the race' };
 const localTime = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit' }) : '—';
-const ago = iso => { if(!iso) return '—'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+const shortDate = iso => iso ? new Date(iso).toLocaleDateString(undefined, { day:'numeric', month:'short' }) : '—';
+const ago = iso => { if(!iso) return '—'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+const JOBS = {
+  'auto-results':['Scoring results','scoring','Every 2 hours'], 'supabase-sync':['Session sync','sync','Every 30 min'],
+  'retry-predictions':['AI calls and retries','predictions','Every 15 min'], 'rollup-analytics':['Daily visitor totals', null, 'Nightly'],
+  'race-report':['Race report email', null, 'Hourly check'], 'site-scan':['Daily site scan','scan','Every morning'], 'weekly-report':['Weekly report','weekly','Mondays'],
+};
 
 /* ── pages ── */
 let page = HOME_PAGE, cache = {}, range = 30;
@@ -286,17 +417,21 @@ function dueAt(stage, race){
   const open = Date.parse(race.date + 'T00:00:00Z') - 3 * 864e5;
   return ({ beforeQuali: open, beforeSprintQ: open, afterSprintQ: t('Sprint quali') + 45 * 6e4, afterSprint: t('Sprint') + 60 * 6e4, afterQuali: t('Quali') + 60 * 6e4 })[stage] ?? open;
 }
-/* What needs the admin right now: calls that are due but missing or baseline, an unsent race report, failing jobs. */
-function needsFrom(w, jobs){
+/* The race report goes out by itself once the result is official and scored (within ~8 h of the flag). */
+const mailState = ls => !ls ? null : ls.newsletter ? 'sent' : Date.now() - (ls.ended || 0) < 12 * 3600e3 ? 'pending' : 'missed';
+/* What needs the admin right now: calls that are due but missing or baseline, a race report that
+   didn't go out, failing jobs, problems the daily scan found. */
+function needsFrom(w, jobs, health){
   const out = [];
   const nx = w?.next, ls = w?.last;
   (nx?.calls || []).forEach(c => {
     if(Date.now() < dueAt(c.stage, nx)) return;
     if(c.id == null) out.push({ lamp:'off', text:`${esc(nx.name.replace(' Grand Prix',''))} · ${STAGE[c.stage].toLowerCase()}: no call yet`, act:'<button class="btn" data-run="predictions">Make it now</button>' });
-    else if(!c.ai && !c.hidden) out.push({ lamp:'on', text:`${esc(nx.name.replace(' Grand Prix',''))} · ${STAGE[c.stage].toLowerCase()} is a baseline`, act:'<button class="btn" data-run="predictions">Retry the AI</button>' });
+    else if(!c.ai && !c.hidden) out.push({ lamp:'on', text:`${esc(nx.name.replace(' Grand Prix',''))} · ${STAGE[c.stage].toLowerCase()} is a baseline (retried every 15 min)`, act:'<button class="btn" data-run="predictions">Retry the AI now</button>' });
   });
-  if(ls && !ls.newsletter) out.push({ lamp:'off', text:`Race report for ${esc(ls.name.replace(' Grand Prix',''))} not sent from here`, act:`<button class="btn" data-mail="${esc(ls.circuitId)}">Preview</button>` });
-  (jobs || []).filter(j => j.failed_7d).forEach(j => out.push({ lamp:'on', text:`${esc(j.jobname)} failed ${j.failed_7d} time${j.failed_7d === 1 ? '' : 's'} this week`, act:'' }));
+  if(mailState(ls) === 'missed') out.push({ lamp:'off', text:`The race report for ${esc(ls.name.replace(' Grand Prix',''))} was never sent`, act:`<button class="btn" data-mail="${esc(ls.circuitId)}">Preview</button>` });
+  (jobs || []).filter(j => j.failed_7d).forEach(j => out.push({ lamp:'on', text:`${esc(JOBS[j.jobname]?.[0] || j.jobname)} failed ${j.failed_7d} time${j.failed_7d === 1 ? '' : 's'} this week`, act:'' }));
+  if(health && !health.ok) out.push({ lamp:'on', text:`The daily scan found ${health.failed} problem${health.failed === 1 ? '' : 's'} ${ago(health.ts)}`, act:'<button class="btn" data-go="health">See them</button>' });
   return out;
 }
 function callRow(c, race, past){
@@ -316,8 +451,12 @@ function wireActions(root, reload){
   root.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
     b.disabled = true; const old = b.textContent; b.textContent = 'Working…';
     try{
-      const r = await api({ action:'run' }, { job: b.dataset.run, all: b.dataset.all === '1' });
-      toast(b.dataset.run === 'predictions' ? (r.autoGenerated?.length ? `Made: ${r.autoGenerated.join(', ')}` : 'Nothing new to make right now') : 'Done');
+      const job = b.dataset.run;
+      const r = await api({ action:'run' }, { job, all: b.dataset.all === '1' });
+      toast(job === 'predictions' ? (r.working ? 'The AI is busy. It keeps trying in the background; check back in a few minutes.' : r.autoGenerated?.length ? `Made: ${r.autoGenerated.join(', ')}` : 'Nothing new to make right now')
+        : job === 'scan' ? (r.ok ? 'Scan done: everything passed' : `Scan done: ${r.failed} problem${r.failed === 1 ? '' : 's'}`)
+        : job === 'weekly' ? (r.ok ? `Report made${r.delivered?.length ? ` and sent to ${r.delivered.join(', ')}` : ''}` : 'Could not make the report')
+        : 'Done');
       reload();
     }catch(e){ toast(e.message); b.disabled = false; b.textContent = old; }
   });
@@ -327,6 +466,7 @@ function wireActions(root, reload){
     catch(e){ toast(e.message); b.disabled = false; }
   });
   root.querySelectorAll('[data-mail]').forEach(b => b.onclick = () => previewMail(b.dataset.mail));
+  root.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
 }
 
 const RENDER = {
@@ -338,8 +478,12 @@ const RENDER = {
     // Whole calendar days to the race in local time (Tue to Sun = 5)
     const dayNo = t => { const d = new Date(t); return Math.floor((d.getTime() - d.getTimezoneOffset() * 6e4) / 864e5); };
     const days = r => dayNo(Date.parse(r.sessions.at(-1).start || r.date)) - dayNo(now);
-    const nx = w.next, ls = w.last;
+    const nx = w.next, ls = w.last, ms = mailState(ls);
     cache.needs = needsFrom(w).length; nav();
+    const mailLine = !ls ? '' : ms === 'sent'
+      ? `Sent ${ago(ls.newsletter.ts)} to ${ls.newsletter.sent} subscriber${ls.newsletter.sent === 1 ? '' : 's'}${ls.newsletter.failed ? ` · ${ls.newsletter.failed} failed` : ''}${ls.newsletter.kind === 'auto' ? ' · sent by itself' : ''}`
+      : ms === 'pending' ? '<span class="tag none">Goes out by itself</span><span>once the result is official and the AI’s call is scored</span>'
+      : '<span class="tag base">Not sent</span><span>it was never sent</span>';
     main.innerHTML = `
       <div class="top"><h1>This weekend</h1><span class="note">Times in your timezone</span></div>
       <div class="grid g2">
@@ -347,11 +491,11 @@ const RENDER = {
           <div class="cond" style="font-size:38px;line-height:1;text-transform:uppercase;margin-top:8px">${esc(nx.name)}</div>
           ${lamps(nx)}
           <h2 style="margin-top:18px">The AI's calls</h2>${nx.calls.map(c => callRow(c, nx, false)).join('')}
-          <p class="note" style="margin-top:8px">The AI makes each call by itself after the session ends; the hourly job retries baselines.</p></section>` : '<section class="panel"><h2>No race coming up</h2></section>'}
+          <p class="note" style="margin-top:8px">The AI makes each call by itself after the session ends. When the free AI is busy, a baseline holds the place and the AI is asked again every 15 minutes.</p></section>` : '<section class="panel"><h2>No race coming up</h2></section>'}
         ${ls ? `<section class="panel"><h2>Last weekend · Round ${ls.round} <span>${esc(ls.name)}</span></h2>
           ${ls.calls.map(c => callRow(c, ls, true)).join('')}
-          <div class="call"><div class="what"><b>Race report email</b><small>${ls.newsletter ? `Sent ${ago(ls.newsletter.ts)} to ${ls.newsletter.sent} subscriber${ls.newsletter.sent === 1 ? '' : 's'}${ls.newsletter.failed ? ` · ${ls.newsletter.failed} failed` : ''}` : '<span class="tag none">Not sent from here yet</span>'}</small></div>
-            <span class="acts"><button class="btn red" data-mail="${esc(ls.circuitId)}">Preview${ls.newsletter ? '' : ' and send'}</button></span></div></section>` : ''}
+          <div class="call"><div class="what"><b>Race report email</b><small>${mailLine}</small></div>
+            <span class="acts"><button class="btn red" data-mail="${esc(ls.circuitId)}">${ms === 'sent' ? 'Preview' : 'Preview and send'}</button></span></div></section>` : ''}
       </div>`;
     wireActions(main, () => go('weekend'));
   },
@@ -360,21 +504,19 @@ const RENDER = {
     const o = await api({ view:'overview', days: range });
     const t = o.traffic || {}, top = t.top || {};
     const prev = t.prev_visitors, delta = prev ? Math.round((t.visitors - prev) / prev * 100) : null;
-    const raceDays = new Set();
     const pts = (t.per_day || []).map(d => { const dt = new Date(d.day + 'T12:00:00Z'); return { v: d.visitors, label: dt.toLocaleDateString(undefined, { day:'numeric', month:'short' }), race: dt.getUTCDay() === 0 }; });
     const list = (k, n = 8) => (top[k] || []).slice(0, n);
     const ev = Object.fromEntries((top.events || []).map(e => [e.key, e.value]));
     const ai = o.ai || {};
-    const needs = needsFrom(o.weekend, o.jobs);
+    const needs = needsFrom(o.weekend, o.jobs, o.health);
     cache.needs = needs.length; nav();
-    const JOBN = { 'auto-results':'Scoring (every 2 h)', 'supabase-sync':'Session sync (30 min)', 'retry-predictions':'AI calls (hourly)', 'rollup-analytics':'Daily totals (nightly)' };
     const lastCircuit = o.weekend?.last?.circuitId || '';
     main.innerHTML = `
       <div class="top"><h1>Overview</h1>
         <select class="pill" id="range" aria-label="Date range">${[7,30,90].map(d => `<option value="${d}" ${d === range ? 'selected' : ''}>Last ${d} days</option>`).join('')}</select>
         <span class="pill"><i></i>${fmt(t.live_now)} on the site now</span>
         <span class="note" style="margin-left:auto">Counted without cookies · visitors who ask not to be tracked are left out</span>
-        <button class="btn red" data-mail="${esc(lastCircuit)}">Send race report</button></div>
+        <button class="btn red" data-mail="${esc(lastCircuit)}">Race report</button></div>
       <div class="kpis">
         <div><span>Visitors</span><b>${fmt(t.visitors)}</b><small>${delta == null ? 'No earlier period yet' : `${delta >= 0 ? '+' : ''}${delta}% on the previous ${range} days`}</small></div>
         <div><span>Page views</span><b>${fmt(t.views)}</b><small>${t.visitors ? (t.views / t.visitors).toFixed(1) + ' per visitor' : '—'}</small></div>
@@ -392,7 +534,7 @@ const RENDER = {
         <section class="panel"><h2>Needs you <span>${needs.length ? `${needs.length} thing${needs.length === 1 ? '' : 's'}` : 'All clear'}</span></h2>
           ${needs.length ? needs.map(n => `<div class="call"><div class="what" style="display:flex;align-items:center;gap:10px"><span class="dot ${n.lamp === 'on' ? 'bad' : 'off'}"></span><span>${n.text}</span></div><span class="acts">${n.act}</span></div>`).join('') : '<div class="empty">Nothing waiting. Calls, emails and jobs are up to date.</div>'}</section>
         <section class="panel"><h2>Scheduled jobs <span>Last 7 days</span></h2>
-          ${(o.jobs || []).map(j => `<div class="tr"><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span><span>${JOBN[j.jobname] || esc(j.jobname)}</span><span class="note" style="margin-left:auto">${j.runs_7d} runs · ${j.last_start ? ago(j.last_start) : 'not run yet'}</span></div>`).join('')}</section>
+          ${(o.jobs || []).map(j => `<div class="tr"><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span><span>${esc(JOBS[j.jobname]?.[0] || j.jobname)}</span><span class="note" style="margin-left:auto">${j.runs_7d} runs · ${j.last_start ? ago(j.last_start) : 'not run yet'}</span></div>`).join('')}</section>
         <section class="panel"><h2>The AI <span>This season</span></h2>
           <div class="tr"><span class="k">Predictions saved</span><span class="b"><i style="width:100%"></i></span><span class="v">${fmt(o.predictions?.total)}</span></div>
           <div class="tr"><span class="k">Baselines (AI busy)</span><span class="b"><i style="width:${o.predictions?.total ? o.predictions.baselines / o.predictions.total * 100 : 0}%;background:var(--lamp)"></i></span><span class="v">${fmt(o.predictions?.baselines)}</span></div>
@@ -435,7 +577,6 @@ const RENDER = {
     const d = await api({ view:'ai', days: 7 });
     const c = d.calls || {}, ai = d.ai || {};
     const rate = c.attempts ? Math.round(c.ok / c.attempts * 100) : null;
-    const JOB = { 'auto-results':['Scoring results','scoring','Every 2 hours'], 'supabase-sync':['Session sync','sync','Every 30 min'], 'retry-predictions':['AI calls and retries','predictions','Every hour'], 'rollup-analytics':['Daily visitor totals', null, 'Nightly'] };
     main.innerHTML = `
       <div class="top"><h1>AI and jobs</h1><span class="note">Last 7 days</span></div>
       <div class="kpis">
@@ -455,8 +596,8 @@ const RENDER = {
         </section>
         <section class="panel"><h2>Scheduled jobs</h2>
           <table><thead><tr><th>Job</th><th>Every</th><th class="n">Runs</th><th>Last run</th><th></th></tr></thead><tbody>
-          ${(d.jobs || []).map(j => `<tr><td><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span>${JOB[j.jobname]?.[0] || esc(j.jobname)}</td><td class="note">${JOB[j.jobname]?.[2] || esc(j.schedule)}</td><td class="n">${j.runs_7d}${j.failed_7d ? ` · ${j.failed_7d} failed` : ''}</td><td class="note">${j.last_start ? ago(j.last_start) : 'not yet'}</td>
-            <td class="n">${JOB[j.jobname]?.[1] ? `<button class="btn" data-run="${JOB[j.jobname][1]}">Run now</button>` : ''}</td></tr>`).join('')}</tbody></table>
+          ${(d.jobs || []).map(j => `<tr><td><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span>${esc(JOBS[j.jobname]?.[0] || j.jobname)}</td><td class="note">${JOBS[j.jobname]?.[2] || esc(j.schedule)}</td><td class="n">${j.runs_7d}${j.failed_7d ? ` · ${j.failed_7d} failed` : ''}</td><td class="note">${j.last_start ? ago(j.last_start) : 'not yet'}</td>
+            <td class="n">${JOBS[j.jobname]?.[1] ? `<button class="btn" data-run="${JOBS[j.jobname][1]}">Run now</button>` : ''}</td></tr>`).join('')}</tbody></table>
           <h2 style="margin-top:16px">Score by race <span>Average ${ai.average ?? '—'}% · outlined bars were baselines</span></h2>
           <div class="bars">${(ai.perRace || []).map(r => `<div title="R${r.round}: ${r.accuracy}%"><i class="${r.baseline ? 'base' : ''}" style="height:${Math.max(3, r.accuracy * 1.6)}px"></i><span>${r.round}</span></div>`).join('')}</div>
         </section>
@@ -469,41 +610,202 @@ const RENDER = {
     const active = d.subscribers.filter(s => s.active !== false);
     main.innerHTML = `
       <div class="top"><h1>Subscribers and email</h1><span class="note">${active.length} email · ${d.push.length} push</span>
-        <button class="btn red" style="margin-left:auto" data-mail="">Preview the latest race report</button></div>
+        <button class="btn red" style="margin-left:auto" data-mail="">Preview a race report</button></div>
       <div class="grid g2">
         <section class="panel"><h2>Race report emails <span>${active.length} active</span></h2>
-          <table><thead><tr><th>Email</th><th>Joined</th><th>Status</th></tr></thead><tbody>
-          ${d.subscribers.map(s => `<tr><td>${esc(s.email)}</td><td class="note">${s.subscribed_at ? new Date(s.subscribed_at).toLocaleDateString() : '—'}</td><td>${s.active === false ? '<span class="tag none">Unsubscribed</span>' : '<span class="tag ai">Active</span>'}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">No subscribers yet</td></tr>'}</tbody></table>
+          <form class="inline" id="subAdd" novalidate><input class="field" id="subEmail" type="email" inputmode="email" placeholder="name@example.com" aria-label="Email to add"><button class="btn red" type="submit">Add</button></form>
+          <p class="help">Everyone on the list gets the race report after each Grand Prix. Each email has its own unsubscribe link.</p>
+          <table style="margin-top:6px"><thead><tr><th>Email</th><th>Joined</th><th>Status</th><th></th></tr></thead><tbody>
+          ${d.subscribers.map(s => `<tr><td style="word-break:break-all">${esc(s.email)}</td><td class="note">${s.subscribed_at ? new Date(s.subscribed_at).toLocaleDateString() : '—'}</td><td>${s.active === false ? '<span class="tag none">Unsubscribed</span>' : '<span class="tag ai">Active</span>'}</td>
+            <td class="n"><button class="btn" data-del="${s.id}" data-email="${esc(s.email)}">Remove</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No subscribers yet</td></tr>'}</tbody></table>
         </section>
         <section class="panel"><h2>Notifications <span>Devices</span></h2>
           <table><thead><tr><th>Service</th><th>Since</th><th class="n">Alerts on</th></tr></thead><tbody>
           ${d.push.map(p => `<tr><td>${esc(p.service.replace('web.push.apple.com', 'Apple (iPhone, Mac)').replace('fcm.googleapis.com', 'Google (Android, Chrome)'))}</td><td class="note">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td><td class="n">${p.on}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nobody yet</td></tr>'}</tbody></table>
-          <h2 style="margin-top:16px">Emails sent</h2>
-          ${d.sends.map(s => `<div class="tr"><span class="k">R${s.round} ${esc(s.circuit_id)}</span><span class="note" style="margin-left:auto">${s.sent} sent${s.failed ? ` · ${s.failed} failed` : ''} · ${ago(s.ts)}</span></div>`).join('') || '<div class="empty">None recorded yet</div>'}
+          <h2 style="margin-top:16px">Race reports sent</h2>
+          ${d.sends.filter(s => s.sent > 0 || s.failed > 0).map(s => `<div class="tr"><span class="k">R${s.round} ${esc(s.circuit_id)}</span><span class="note" style="margin-left:auto">${s.sent} sent${s.failed ? ` · ${s.failed} failed` : ''}${s.kind === 'auto' ? ' · by itself' : ''} · ${ago(s.ts)}</span></div>`).join('') || '<div class="empty">None recorded yet</div>'}
         </section>
       </div>`;
+    $('subAdd').onsubmit = async e => {
+      e.preventDefault();
+      const email = $('subEmail').value.trim();
+      if(!email) return $('subEmail').focus();
+      try{ const r = await api({ action:'sub_add' }, { email }); toast(r.status === 'already' ? `${email} is already on the list` : r.status === 'back' ? `${email} is back on the list` : `Added ${email}`); go('subscribers'); }
+      catch(err){ toast(err.message); }
+    };
+    main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if(!confirm(`Remove ${b.dataset.email} from the race report list? They won't get any more race reports.`)) return;
+      b.disabled = true;
+      try{ await api({ action:'sub_remove' }, { id: +b.dataset.del }); toast(`Removed ${b.dataset.email}`); go('subscribers'); }
+      catch(err){ toast(err.message); b.disabled = false; }
+    });
     wireActions(main, () => go('subscribers'));
+  },
+
+  async health(main){
+    const d = await api({ view:'health' });
+    const last = d.scans?.[0], open = (d.log || []).filter(l => l.kind === 'found' && !l.resolved);
+    const weekAgo = Date.now() - 7 * 864e5;
+    const fixedWeek = (d.log || []).filter(l => (l.kind === 'fixed' || (l.kind === 'found' && l.resolved)) && Date.parse(l.resolved_ts || l.ts) > weekAgo).length;
+    const dv = d.delivery || {}, on = ['telegram','whatsapp','discord'].filter(k => dv[k]?.on);
+    const chanName = { telegram:'Telegram', whatsapp:'WhatsApp', discord:'Discord' };
+    main.innerHTML = `
+      <div class="top"><h1>Health and reports</h1><span class="note">A scan of the live site every morning, a one-page report every Monday</span>
+        <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-run="scan">Run the scan now</button><button class="btn red" data-run="weekly">Make this week’s report</button></span></div>
+      <div class="kpis">
+        <div><span>Last scan</span><b>${last ? (last.ok ? 'OK' : `${last.failed} issue${last.failed === 1 ? '' : 's'}`) : '—'}</b><small>${last ? ago(last.ts) : 'Not run yet'}</small></div>
+        <div><span>Open problems</span><b>${open.length}</b><small>Found and not fixed yet</small></div>
+        <div><span>Fixed this week</span><b>${fixedWeek}</b><small>By the agent or by hand</small></div>
+        <div><span>Scans this fortnight</span><b>${d.scans?.length || 0}</b><small>${(d.scans || []).filter(s => s.ok).length} all clear</small></div>
+        <div><span>Weekly reports</span><b>${d.reports?.length || 0}</b><small>${d.reports?.[0] ? `Last ${shortDate(d.reports[0].created_at)}` : 'None yet'}</small></div>
+        <div><span>Report goes to</span><b style="font-size:24px;line-height:34px">${on.length ? on.map(k => chanName[k]).join(', ') : 'Nowhere yet'}</b><small>${on.length ? 'Every Monday morning' : 'Set it up below'}</small></div>
+      </div>
+      <div class="grid g2">
+        <section class="panel"><h2>Latest scan <span>${last ? localTime(last.ts) : ''}</span></h2>
+          ${last ? (last.checks || []).map(c => `<div class="check"><span class="dot ${c.ok ? '' : 'bad'}"></span><div>${esc(c.name)}<small>${esc(c.detail || '')}</small></div></div>`).join('') : '<div class="empty">The first scan runs tomorrow at 06:00 UTC, or press Run the scan now.</div>'}
+        </section>
+        <section class="panel"><h2>Problems and fixes <span>Newest first</span></h2>
+          ${(d.log || []).slice(0, 25).map(l => `<div class="call"><div class="what"><b>${esc(l.title)}</b><small>${l.kind === 'fixed' ? '<span class="tag fix">Fixed</span>' : l.kind === 'found' ? (l.resolved ? '<span class="tag fix">Fixed</span>' : '<span class="tag found">Open</span>') : '<span class="tag none">Note</span>'}<span>${esc(l.detail || '')}</span><span>· ${l.source === 'agent' ? 'agent' : l.source === 'scan' ? 'daily scan' : 'admin'} · ${ago(l.ts)}</span></small></div>
+            <span class="acts">${l.kind === 'found' && !l.resolved ? `<button class="btn" data-resolve="${l.id}">Mark fixed</button>` : ''}</span></div>`).join('') || '<div class="empty">Nothing recorded yet.</div>'}
+        </section>
+      </div>
+      <div class="grid g2">
+        <section class="panel"><h2>Weekly reports <span>One page, every Monday</span></h2>
+          ${(d.reports || []).map(r => `<div class="call"><div class="what"><b>Week of ${shortDate(r.week_start)} to ${shortDate(r.week_end)}</b><small><span>Made ${ago(r.created_at)}</span>${(r.delivered?.sent || []).length ? `<span>· sent to ${r.delivered.sent.map(k => chanName[k] || k).join(', ')}</span>` : '<span>· not delivered</span>'}</small></div>
+            <span class="acts"><button class="btn" data-report="${r.id}">Open PDF</button></span></div>`).join('') || '<div class="empty">The first report is made next Monday, or press Make this week’s report.</div>'}
+        </section>
+        <section class="panel" id="delivery"><h2>Where the report goes <span>${d.canManage ? 'Only you can change this' : 'Set by the owner'}</span></h2>${deliveryHtml(dv, d.canManage)}</section>
+      </div>`;
+    wireActions(main, () => go('health'));
+    main.querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => { b.disabled = true; try{ await api({ action:'log_resolve' }, { id: +b.dataset.resolve }); go('health'); }catch(e){ toast(e.message); b.disabled = false; } });
+    main.querySelectorAll('[data-report]').forEach(b => b.onclick = async () => {
+      const w = window.open('', '_blank'); b.disabled = true;
+      try{ const { url } = await api({ action:'report_link' }, { id: +b.dataset.report }); if(w) w.location = url; else location.href = url; }
+      catch(e){ if(w) w.close(); toast(e.message); }
+      finally{ b.disabled = false; }
+    });
+    if(d.canManage) wireDelivery();
+  },
+
+  async team(main){
+    const d = await api({ view:'admins' });
+    main.innerHTML = `
+      <div class="top"><h1>Admins</h1><span class="note">Everyone who can sign in to Pit Wall</span></div>
+      <div class="grid g2">
+        <section class="panel"><h2>Admins <span>${d.admins.length}</span></h2>
+          <table><thead><tr><th>Admin</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+          ${d.admins.map(a => `<tr><td style="padding:8px 10px 8px 0"><div class="who"><b style="font-size:14px">${esc(a.name || '—')}</b><span class="badge ${a.owner ? '' : 'quiet'}">${esc(a.title || (a.owner ? 'Owner' : 'Admin'))}</span></div>
+              <div class="note" style="margin-top:3px;overflow-wrap:anywhere">${esc(a.email)}${a.id === d.you ? ' · you' : ''}</div></td>
+            <td class="note" style="white-space:nowrap">${a.last_sign_in_at ? ago(a.last_sign_in_at) : 'Never'}</td>
+            <td class="n">${d.canManage && !a.owner ? `<button class="btn" data-rm="${a.id}" data-name="${esc(a.name || a.email)}">Remove</button>` : ''}</td></tr>`).join('')}</tbody></table>
+        </section>
+        <section class="panel"><h2>Add an admin</h2>
+          ${d.canManage ? `<form class="form" id="adminForm" novalidate>
+            <div class="row2"><label>Full name<input class="field" id="aName" autocomplete="off" maxlength="60" required></label>
+              <label>Title<input class="field" id="aTitle" autocomplete="off" maxlength="40" value="Admin"></label></div>
+            <label>Email<input class="field" id="aEmail" type="email" inputmode="email" autocomplete="off" required></label>
+            <label>First password<span class="pw"><input class="field" id="aPw" type="text" autocomplete="new-password" minlength="${MIN_PW}" maxlength="72" spellcheck="false" style="padding-right:96px" required><button class="eye" type="button" id="aGen">Make one</button></span></label>
+            <p class="help">Give them their email and this password. They sign in at <b>/admin</b>, then can change it with <b>Change password</b> (or use <b>Forgot password</b>). Admins see everything here, but only you can add or remove admins and change where reports go.</p>
+            <div class="msg" id="aMsg" role="status"></div>
+            <div><button class="btn red" type="submit">Add admin</button></div></form>`
+          : '<p class="help">Only the owner can add or remove admins.</p>'}
+        </section>
+      </div>`;
+    if(d.canManage){
+      // 12 random characters without look-alikes (no 0/o, 1/l/i), in three groups: easy to read out, ~59 bits.
+      $('aGen').onclick = () => { const abc = 'abcdefghjkmnpqrstuvwxyz23456789', a = new Uint32Array(12); crypto.getRandomValues(a);
+        const c = [...a].map(n => abc[n % abc.length]).join(''); $('aPw').value = `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`; };
+      $('adminForm').onsubmit = async e => {
+        e.preventDefault();
+        const m = $('aMsg'), body = { name: $('aName').value.trim(), title: $('aTitle').value.trim() || 'Admin', email: $('aEmail').value.trim(), password: $('aPw').value };
+        if(!body.name || !body.email){ m.className = 'msg err'; m.textContent = 'Enter their name and email.'; return; }
+        if(body.password.length < MIN_PW){ m.className = 'msg err'; m.textContent = `The password needs at least ${MIN_PW} characters.`; return; }
+        m.className = 'msg'; m.textContent = 'Adding…';
+        try{ const r = await api({ action:'admin_create' }, body); toast(r.existing ? `${body.name} is an admin again` : `${body.name} is now an admin`); go('team'); }
+        catch(err){ m.className = 'msg err'; m.textContent = err.message; }
+      };
+      main.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+        if(!confirm(`Remove ${b.dataset.name}? Their account is deleted and they can't sign in any more.`)) return;
+        b.disabled = true;
+        try{ await api({ action:'admin_remove' }, { id: b.dataset.rm }); toast(`Removed ${b.dataset.name}`); go('team'); }
+        catch(err){ toast(err.message); b.disabled = false; }
+      });
+    }
   },
 };
 
+/* Delivery settings for the weekly report. Tokens are sent to the server once and never shown again. */
+function deliveryHtml(dv, can){
+  const state = (on, text) => `<span class="badge ${on ? '' : 'quiet'}">${on ? 'On' : 'Off'}</span>${text ? `<span class="note">${text}</span>` : ''}`;
+  if(!can) return `<div class="chan"><h3>WhatsApp ${state(dv.whatsapp?.on)}</h3></div><div class="chan"><h3>Telegram ${state(dv.telegram?.on)}</h3></div><div class="chan"><h3>Discord ${state(dv.discord?.on)}</h3></div>`;
+  return `
+    <div class="chan"><h3>WhatsApp ${state(dv.whatsapp?.on, dv.whatsapp?.phone ? `to ${dv.whatsapp.phone}` : '')}</h3>
+      <p class="help">Free through CallMeBot. WhatsApp only takes a text from it, so you get the week’s numbers and a link to the PDF.</p>
+      <ol class="steps"><li>Open <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot’s WhatsApp page</a> and follow its steps: you add their number to your contacts and send it a set message on WhatsApp.</li><li>It replies with your API key.</li><li>Enter your WhatsApp number (with the country code) and that key here.</li></ol>
+      <div class="inline"><input class="field" id="waPhone" inputmode="tel" placeholder="+20 1xx xxx xxxx" aria-label="Your WhatsApp number"><input class="field" id="waKey" placeholder="API key" aria-label="CallMeBot API key" spellcheck="false"><button class="btn" data-save="wa">Save</button></div></div>
+    <div class="chan"><h3>Telegram ${state(dv.telegram?.on, dv.telegram?.bot && !dv.telegram?.on ? 'bot saved, chat not found yet' : '')}</h3>
+      <p class="help">Free, and the PDF arrives as a file.</p>
+      <ol class="steps"><li>In Telegram, open <b>@BotFather</b>, send <b>/newbot</b> and follow the two questions.</li><li>Paste the token it gives you here and save.</li><li>Open your new bot, press <b>Start</b>, then press <b>Find my chat</b>.</li></ol>
+      <div class="inline"><input class="field" id="tgToken" type="password" placeholder="123456789:ABC…" aria-label="Telegram bot token" spellcheck="false"><button class="btn" data-save="tg">Save</button><button class="btn" id="tgFind" ${dv.telegram?.bot ? '' : 'disabled'}>Find my chat</button></div></div>
+    <div class="chan"><h3>Discord ${state(dv.discord?.on)}</h3>
+      <p class="help">Free, PDF attached. In your server: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.</p>
+      <div class="inline"><input class="field" id="dcHook" type="password" placeholder="https://discord.com/api/webhooks/…" aria-label="Discord webhook URL" spellcheck="false"><button class="btn" data-save="dc">Save</button></div></div>
+    <div class="chan"><div class="inline" style="margin-top:0"><button class="btn red" id="notifyTest" ${dv.telegram?.on || dv.whatsapp?.on || dv.discord?.on ? '' : 'disabled'}>Send a test message</button>
+      <button class="btn" id="clearAll">Turn everything off</button></div></div>`;
+}
+function wireDelivery(){
+  const save = async (body, msg) => { try{ await api({ action:'settings' }, body); toast(msg); go('health'); }catch(e){ toast(e.message); } };
+  document.querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
+    const k = b.dataset.save;
+    if(k === 'wa'){ const phone = $('waPhone').value.replace(/[\s()-]/g, ''), key = $('waKey').value.trim(); if(!phone || !key) return toast('Enter your number and the API key'); save({ whatsapp_phone: phone, whatsapp_key: key }, 'WhatsApp saved'); }
+    if(k === 'tg'){ const t = $('tgToken').value.trim(); if(!t) return toast('Paste the bot token first'); save({ telegram_token: t, telegram_chat: '' }, 'Bot saved. Now open it in Telegram, press Start, then Find my chat.'); }
+    if(k === 'dc'){ const u = $('dcHook').value.trim(); if(!u) return toast('Paste the webhook URL first'); save({ discord_webhook: u }, 'Discord saved'); }
+  });
+  $('tgFind').onclick = async () => { try{ await api({ action:'telegram_chat' }); toast('Found your chat. Telegram is on.'); go('health'); }catch(e){ toast(e.message); } };
+  $('notifyTest').onclick = async e => {
+    e.target.disabled = true;
+    try{ const r = await api({ action:'notify_test' }); const ok = Object.entries(r.results || {}).filter(([, v]) => v === 'ok').map(([k]) => k), bad = Object.entries(r.results || {}).filter(([, v]) => v !== 'ok');
+      toast(ok.length ? `Sent to ${ok.join(', ')}${bad.length ? `; failed: ${bad.map(([k, v]) => `${k} (${v})`).join(', ')}` : ''}` : `Nothing was sent${bad.length ? `: ${bad.map(([k, v]) => `${k} (${v})`).join(', ')}` : ''}`); }
+    catch(err){ toast(err.message); }
+    finally{ e.target.disabled = false; }
+  };
+  $('clearAll').onclick = () => { if(confirm('Stop sending the weekly report anywhere?')) save({ whatsapp_phone:'', whatsapp_key:'', telegram_token:'', telegram_chat:'', discord_webhook:'' }, 'Delivery turned off'); };
+}
+
+/* Race report: choose the race, preview it, send a test to yourself, then send it to everyone. */
 async function previewMail(circuit){
   const dlg = $('dlg'), body = $('dlgBody');
   body.innerHTML = '<div class="skeleton">Building the email…</div>';
-  dlg.showModal();
+  if(!dlg.open) dlg.showModal();
+  const races = (cache.races ||= (await api({ view:'races' }).catch(() => ({ races: [] }))).races || []);
   try{
-    const p = await api({ action:'newsletter' }, { circuit: circuit || undefined });
-    body.innerHTML = `<h2 style="font:600 17px Barlow">${esc(p.subject)}</h2><p class="note" style="margin-top:4px">Round ${p.round} · goes to ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'}</p>
+    const p = await api({ action:'newsletter' }, { circuit: circuit || undefined, mode:'preview' });
+    const sent = p.sent;
+    body.innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <select class="pill" id="mailRace" aria-label="Race">${races.map(r => `<option value="${esc(r.circuitId)}" ${r.circuitId === p.circuit ? 'selected' : ''}>R${r.round} · ${esc(r.name)}${r.sends.length ? ' · sent' : ''}</option>`).join('')}</select>
+        <span class="note">${sent ? `Sent ${ago(sent.ts)} to ${sent.sent}${sent.kind === 'auto' ? ', by itself' : ''}` : 'Not sent yet'} · ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'}</span></div>
+      <h2 style="font:600 17px Barlow;margin-top:12px">${esc(p.subject)}</h2>
       <iframe sandbox title="Email preview"></iframe>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" id="dlgClose">Close</button><button class="btn red" id="dlgSend" ${p.recipients ? '' : 'disabled'}>Send to ${p.recipients}</button></div>`;
+      <div class="row-end"><button class="btn" id="dlgClose">Close</button><button class="btn" id="dlgTest">Send a test to me</button>
+        <button class="btn red" id="dlgSend" ${p.recipients ? '' : 'disabled'}>${sent ? 'Send again' : 'Send'} to ${p.recipients}</button></div>`;
     body.querySelector('iframe').srcdoc = p.html;
+    $('mailRace').onchange = e => previewMail(e.target.value);
     $('dlgClose').onclick = () => dlg.close();
-    $('dlgSend').onclick = async e => {
-      if(!confirm(`Send "${p.subject}" to ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'} now?`)) return;
+    $('dlgTest').onclick = async e => {
       e.target.disabled = true; e.target.textContent = 'Sending…';
-      try{ const r = await api({ action:'newsletter' }, { circuit: p.circuit, send: true }); dlg.close(); toast(`Sent to ${r.sent}${r.failed ? `, ${r.failed} failed` : ''}`); go(page); }
-      catch(err){ toast(err.message); e.target.disabled = false; e.target.textContent = `Send to ${p.recipients}`; }
+      try{ const r = await api({ action:'newsletter' }, { circuit: p.circuit, mode:'test' }); toast(`Test sent to ${r.to}`); }
+      catch(err){ toast(err.message); }
+      finally{ e.target.disabled = false; e.target.textContent = 'Send a test to me'; }
     };
-  }catch(e){ body.innerHTML = `<p>${esc(e.message)}</p><div style="text-align:right;margin-top:12px"><button class="btn" onclick="document.getElementById('dlg').close()">Close</button></div>`; }
+    $('dlgSend').onclick = async e => {
+      const q = sent ? `This report already went to ${sent.sent} subscriber${sent.sent === 1 ? '' : 's'} ${ago(sent.ts)}. Send it to all ${p.recipients} again?`
+        : `Send "${p.subject}" to ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'} now?`;
+      if(!confirm(q)) return;
+      e.target.disabled = true; e.target.textContent = 'Sending…';
+      try{ const r = await api({ action:'newsletter' }, { circuit: p.circuit, mode:'send', force: !!sent }); cache.races = null; dlg.close(); toast(`Sent to ${r.sent}${r.failed ? `, ${r.failed} failed` : ''}`); go(page); }
+      catch(err){ toast(err.status === 409 ? 'It was already sent. Open it again to send it once more.' : err.message); e.target.disabled = false; e.target.textContent = `Send to ${p.recipients}`; }
+    };
+  }catch(e){ body.innerHTML = `<p>${esc(e.message)}</p><div class="row-end"><button class="btn" onclick="document.getElementById('dlg').close()">Close</button></div>`; }
 }
 
 const SCREEN = { pred:'Predict', comp:'Reality', live:'Live', arch:'Predictions archive', hist:'Season', cal:'Calendar', anlt:'Analytics', pits:'Pit stops', more:'More',
@@ -514,18 +816,30 @@ const regionName = code => { try{ return code && code !== '?' ? (regionNames?.of
 /* ── start ── */
 function showLogin(text){
   $('app').classList.remove('on'); $('login').hidden = false;
-  if(text){ const m = $('loginMsg'); m.className = 'msg err'; m.textContent = text; }
+  if(!new URLSearchParams(location.hash.slice(1)).get('reset')) loginView('signin');
+  if(text) loginMsg(text, 'err');
 }
 async function start(){
   try{
-    const me = await api({ view:'me' });
-    $('meEmail').textContent = me.email;
+    ME = await api({ view:'me' });
+    $('meName').textContent = ME.name || ME.email;
+    $('meTitle').textContent = ME.title || (ME.owner ? 'Owner' : 'Admin');
+    $('meTitle').classList.toggle('quiet', !ME.owner);
+    $('meEmail').textContent = ME.email;
     $('login').hidden = true; $('app').classList.add('on');
     const want = location.hash.slice(1);
     go(PAGES.some(p => p[0] === want) ? want : HOME_PAGE);
-  }catch(e){ if(e.message !== 'signed out') showLogin(e.message === 'Sign in first' ? 'This account is not an admin.' : e.message); }
+  }catch(e){
+    if(e.message === 'signed out') return;
+    store.del('pw_session');
+    showLogin(e.message === 'Sign in first' ? 'This account is not an admin.' : e.message);
+  }
 }
-token().then(t => t ? start() : showLogin());
+const openReset = () => { recovery = null; $('app').classList.remove('on'); $('login').hidden = false; loginView('reset'); };
+// A reset link pasted into an open tab only changes the #hash, so watch for that too.
+window.addEventListener('hashchange', () => { if(new URLSearchParams(location.hash.slice(1)).get('reset')) openReset(); });
+if(new URLSearchParams(location.hash.slice(1)).get('reset')) openReset();
+else token().then(t => t ? start() : showLogin());
 </script>
 </body>
 </html>
