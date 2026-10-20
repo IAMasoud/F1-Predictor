@@ -4,10 +4,12 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v66';
+const CACHE = 'f1-predictor-v68';
 const STATIC = [
   '/',
   '/index.html',
+  '/app.css',
+  '/app.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-96.png',
@@ -39,11 +41,12 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (!(sameOrigin || isFont) || (sameOrigin && url.pathname.startsWith('/api/'))) return;
+  if (!(sameOrigin || isFont) || (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')))) return;
 
   // Page loads: the latest app from the network (so a deploy shows on the first open),
   // the cached copy when offline or the network takes longer than 4 seconds.
-  if (e.request.mode === 'navigate') {
+  // Only the app itself is cached as the offline page; /privacy and /terms just load.
+  if (e.request.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) {
     e.respondWith((async () => {
       try {
         const res = await fetch(e.request, { signal: AbortSignal.timeout(4000) });

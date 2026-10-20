@@ -22,13 +22,15 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: { message: 'Too many predictions in a short time — wait a few minutes and try again.' } });
   }
 
-  const { prompt } = req.body || {};
+  const { prompt, race, stage } = req.body || {};
+  const tag = v => (typeof v === 'string' && /^[a-zA-Z_]{2,24}$/.test(v) ? v : null);
   if (!prompt || typeof prompt !== 'string' || prompt.length > 20000) {
     return res.status(400).json({ error: { message: 'Invalid prompt' } });
   }
 
   try {
-    const out = await generateText({ system: SYSTEM, prompt, temperature: 0.8, deadlineMs: 40000 }); // page gives up at 45s
+    const out = await generateText({ system: SYSTEM, prompt, temperature: 0.8, deadlineMs: 40000, // page gives up at 45s
+      meta: { source: 'user', race: tag(race), stage: tag(stage) } });
     // Same shape the page already reads: data.choices[0].message.content
     res.status(200).json({
       choices: [{ message: { role: 'assistant', content: out.text } }],

@@ -250,8 +250,9 @@ Respond ONLY with valid JSON, no markdown:
 }
 
 /* ───────── Call the free AI (Gemini free tier, optional Groq backup) ───────── */
-async function callAI(prompt) {
+async function callAI(prompt, meta) {
   const { json } = await generateJSON({
+    meta,
     system: 'You are an expert F1 race analyst. Always respond with valid JSON only — no markdown, no preamble.',
     prompt,
     temperature: 0.7,
@@ -276,7 +277,7 @@ async function sbFetch(SB_URL, SB_KEY, path, opts={}) {
 
 async function getStoredPrediction(SB_URL, SB_KEY, race, predType, stage) {
   const r = await sbFetch(SB_URL, SB_KEY,
-    `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.${predType}&stage=eq.${stage}&limit=1`);
+    `predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.${predType}&stage=eq.${stage}&hidden=eq.false&limit=1`);
   if (!r.ok) return null;
   const rows = await r.json();
   return rows?.[0] || null;
@@ -296,6 +297,7 @@ async function savePrediction(SB_URL, SB_KEY, race, prediction, predType, stage)
       prediction,
       actual_results: null,
       accuracy: null,
+      hidden: false,
     }),
   });
 }
@@ -353,7 +355,7 @@ async function ensurePrediction(SB_URL, SB_KEY, race, stage, predType, sqGrid, q
   if (existing && !existing.prediction?._fallback) return { generated: false, prediction: existing.prediction };
   try {
     const prompt = buildPrompt(race, stage, predType, sqGrid, qGrid);
-    const prediction = await callAI(prompt);
+    const prediction = await callAI(prompt, { source: 'auto', race: race.circuitId, stage });
     if (!prediction?.top10?.length) throw new Error('Empty prediction returned');
     await savePrediction(SB_URL, SB_KEY, race, prediction, predType, stage);
     return { generated: true, prediction, ai: true };

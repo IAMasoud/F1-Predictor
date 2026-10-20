@@ -18,6 +18,19 @@ const GEMINI_MODELS = [
   { model: 'gemini-3.1-flash-lite',    thinkingLevel: 'minimal' },
 ];
 const PER_ATTEMPT_MS = 30000;
+import { sb } from './_guard.js';
+
+// One row per attempt in ai_calls, for the admin dashboard. Never blocks or breaks a call.
+async function logAttempts(rows, meta = {}) {
+  if (!rows.length || !process.env.SB_SERVICE_KEY) return;
+  const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
+  try {
+    await sb('ai_calls', { method: 'POST', prefer: 'return=minimal', body: rows.map(r => ({
+      source: clip(meta.source, 12), race: clip(meta.race, 24), stage: clip(meta.stage, 16),
+      model: clip(r.model, 48), ok: r.ok, ms: r.ms, error: clip(r.error, 200),
+    })) });
+  } catch { /* logging is best-effort */ }
+}
 const GROQ_MODEL = 'openai/gpt-oss-120b';
 
 export class AIError extends Error {
@@ -73,11 +86,12 @@ async function callGroq(key, { system, prompt, temperature }, timeoutMs) {
 
 /* Try each free provider in order until one answers inside the time budget.
    Returns { text, model, provider }. Throws AIError (status 429 when every provider is rate-limited). */
-export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000 }) {
+export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000, meta }) {
   const started = Date.now();
   const left = () => deadlineMs - (Date.now() - started);
   const opts = { system, prompt, temperature, maxTokens };
   const errors = [];
+  const attempts = [];
 
   const geminiKey = process.env.GEMINI_API_KEY;
   // Two passes over the list: free-tier "high demand" spikes are usually short.
@@ -89,10 +103,13 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
       try {
         const out = await callGemini(m, geminiKey, opts, Math.min(left(), PER_ATTEMPT_MS));
         console.log(`[ai] ${m.model} ok in ${Date.now() - t0}ms (${out.model})`);
+        attempts.push({ model: m.model, ok: true, ms: Date.now() - t0 });
+        await logAttempts(attempts, meta);
         return out;
       }
       catch (e) {
         errors.push({ who: m.model, status: e.status, msg: e.message });
+        attempts.push({ model: m.model, ok: false, ms: Date.now() - t0, error: `${e.status || e.name} ${e.message}` });
         console.warn(`[ai] ${m.model} failed after ${Date.now() - t0}ms: ${e.status || e.name} ${String(e.message).slice(0, 200)}`);
         // A rejected key won't work on another model or pass.
         if (e.status === 401 || e.status === 403) { pass = 2; break; }
@@ -101,9 +118,19 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
   }
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey && left() >= 4000) {
-    try { return await callGroq(groqKey, opts, left()); }
-    catch (e) { errors.push({ who: 'groq', status: e.status, msg: e.message }); }
+    const t0 = Date.now();
+    try {
+      const out = await callGroq(groqKey, opts, left());
+      attempts.push({ model: GROQ_MODEL, ok: true, ms: Date.now() - t0 });
+      await logAttempts(attempts, meta);
+      return out;
+    }
+    catch (e) {
+      errors.push({ who: 'groq', status: e.status, msg: e.message });
+      attempts.push({ model: GROQ_MODEL, ok: false, ms: Date.now() - t0, error: `${e.status || e.name} ${e.message}` });
+    }
   }
+  await logAttempts(attempts, meta);
 
   if (!geminiKey && !groqKey) throw new AIError('No AI key configured on the server', 500);
   console.warn('[ai] all providers failed:', JSON.stringify(errors));

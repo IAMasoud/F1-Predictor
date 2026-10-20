@@ -32,6 +32,7 @@ function predictionRow(r) {
     race_date:  need(/^\d{4}-\d{2}-\d{2}$/.test(r.race_date || '') ? r.race_date : undefined, 'race_date'),
     pred_type:  need(['race', 'sprint'].includes(r.pred_type) ? r.pred_type : undefined, 'pred_type'),
     stage:      need(STAGES.has(r.stage) ? r.stage : undefined, 'stage'),
+    hidden:     false, // a new call for a stage the admin hid is shown again
     prediction: clean({
       top10: top10.map((d, i) => clean({
         pos:       int(Number(d?.pos), 1, 30) ?? i + 1,

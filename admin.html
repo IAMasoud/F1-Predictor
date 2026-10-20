@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Pit Wall · F1 Predictor</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /*
+   * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+   * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
+   */
+  :root,[data-theme="dark"]{
+    --ground:#070708; --panel:#111113; --panel-2:#19191c; --line:#222225; --outline:#3a3a3e;
+    --ink:#fff; --ink-2:#b4b4b4; --ink-3:#949494; --lamp:#ff2a2a; --lamp-off:#19191c;
+    --gain:#3fc07a; --gain-bg:#16281d; --loss:#ff6464; --loss-bg:#2c1416; --chart:#fff; --chart-2:#5c5c62;
+  }
+  [data-theme="light"]{
+    --ground:#f4f4f2; --panel:#fff; --panel-2:#ebebe9; --line:#e4e4e1; --outline:#cfcfcb;
+    --ink:#0d0d0d; --ink-2:#4a4a4a; --ink-3:#686868; --lamp:#e8101f; --lamp-off:#e2e2e0;
+    --gain:#16803f; --gain-bg:#e3f3ea; --loss:#b4231a; --loss-bg:#fdecea; --chart:#0d0d0d; --chart-2:#b8b8b4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--ground);color:var(--ink);font:400 14px/1.45 'Barlow',system-ui,sans-serif;font-variant-numeric:tabular-nums}
+  ::selection{background:var(--lamp);color:#fff}
+  :focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1)}
+  button:active:not(:disabled){transform:scale(.97)}
+  button:disabled{opacity:.5;cursor:default}
+  a{color:inherit}
+  .cond{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:800}
+
+  /* sign in */
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  #login[hidden],[hidden]{display:none!important}
+  .login{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px}
+  .login h1{font:italic 800 34px/1 'Barlow Condensed';text-transform:uppercase;margin-top:16px}
+  .login p{margin-top:8px;color:var(--ink-2)}
+  .field{width:100%;height:44px;margin-top:14px;padding:0 14px;border-radius:10px;border:1px solid var(--outline);background:var(--ground)}
+  .code{letter-spacing:8px;font:700 22px 'Barlow';text-align:center}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--outline);background:none;font:600 13px 'Barlow';white-space:nowrap}
+  .btn.red{background:var(--lamp);border-color:var(--lamp);color:#fff;font:700 15px 'Barlow Condensed';letter-spacing:.4px;text-transform:uppercase}
+  .btn.block{display:flex;width:100%;height:44px;margin-top:12px}
+  .msg{margin-top:10px;min-height:20px;color:var(--ink-3)}.msg.err{color:var(--loss)}
+
+  /* shell */
+  #app{display:none;min-height:100vh;grid-template-columns:232px 1fr}
+  #app.on{display:grid}
+  aside{position:sticky;top:0;height:100vh;padding:20px 14px;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 8px}.brand b{font:italic 800 22px/1 'Barlow Condensed'}.brand small{display:block;font:500 12px 'Barlow';color:var(--ink-3);margin-top:3px}
+  nav.side{margin-top:26px;display:flex;flex-direction:column;gap:2px}
+  nav.side button{display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border:0;border-radius:8px;background:none;color:var(--ink-2);font:500 14px 'Barlow';text-align:left}
+  nav.side button.act{background:var(--panel-2);color:var(--ink)}
+  nav.side svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  nav.side em{margin-left:auto;font-style:normal;font:600 12px 'Barlow';color:#fff;background:var(--lamp);border-radius:9px;padding:0 7px}
+  .me{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--line);color:var(--ink-3);font-size:13px}.me b{display:block;color:var(--ink);font-weight:600;word-break:break-all}
+  .me .row{display:flex;gap:6px;margin-top:10px}
+  main{padding:22px 28px 60px;min-width:0}
+  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .top h1{font:italic 800 32px/1 'Barlow Condensed';text-transform:uppercase}
+  .pill{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--outline);border-radius:8px;font:500 14px 'Barlow';background:none}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--gain)}
+  select.pill{appearance:none;padding-right:28px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23949494' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 10px center}
+  .note{color:var(--ink-3);font-size:12px}
+  .grid{display:grid;gap:16px;margin-top:16px}
+  .g3{grid-template-columns:2fr 1fr 1fr}.g2{grid-template-columns:1fr 1fr}.g3e{grid-template-columns:repeat(3,1fr)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+  [data-theme="dark"] .panel{border-color:transparent}
+  .panel h2{font:600 15px 'Barlow';display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .panel h2 span{font:500 12px 'Barlow';color:var(--ink-3)}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:16px}
+  [data-theme="dark"] .kpis{border-color:transparent}
+  .kpis div{padding:14px 16px;border-left:1px solid var(--line)}.kpis div:first-child{border-left:0}
+  .kpis span{font:500 13px 'Barlow';color:var(--ink-3)}.kpis b{display:block;font:italic 800 34px/1 'Barlow Condensed';margin-top:8px}
+  .kpis small{display:block;margin-top:6px;font:500 12px 'Barlow';color:var(--ink-3)}
+  .tr{display:flex;align-items:center;gap:10px;min-height:32px;font:500 14px 'Barlow'}
+  .tr .k{width:120px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tr .b{flex:1;height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden}.tr .b i{display:block;height:100%;background:var(--ink-2)}
+  .tr .v{width:52px;text-align:right;color:var(--ink-2)}
+  table{width:100%;border-collapse:collapse;font:500 14px 'Barlow'}
+  th{text-align:left;font:500 12px 'Barlow';color:var(--ink-3);height:30px;border-bottom:1px solid var(--line)}
+  td{height:40px;border-bottom:1px solid var(--line);padding-right:10px;vertical-align:middle}
+  td.n,th.n{text-align:right}
+  th+th{padding-left:10px}
+  .tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font:600 12px 'Barlow'}
+  .tag.ai{background:var(--gain-bg);color:var(--gain)}.tag.base{background:var(--loss-bg);color:var(--loss)}.tag.none{background:var(--panel-2);color:var(--ink-3)}
+  .lamps{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+  .lamps div{border-radius:10px;background:var(--panel-2);padding:10px}
+  .lamps i{display:block;width:16px;height:16px;border-radius:50%;background:var(--lamp-off);box-shadow:inset 0 0 0 1px var(--outline)}
+  .lamps .on i{background:var(--lamp);box-shadow:none}
+  .lamps b{display:block;font:600 14px 'Barlow';margin-top:8px}.lamps small{font:500 12px 'Barlow';color:var(--ink-3)}
+  .call{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 0;border-top:1px solid var(--line)}
+  .call .what{flex:1;min-width:0}
+  .call b{display:block;font:600 15px 'Barlow'}
+  .call small{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px;font:500 13px 'Barlow';color:var(--ink-2)}
+  .tag{white-space:nowrap}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--gain);margin-right:8px;vertical-align:middle}
+  .dot.bad{background:var(--loss)}.dot.off{background:var(--ink-3)}
+  .empty{color:var(--ink-3);padding:10px 0}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:120px;margin-top:12px}
+  .bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+  .bars i{display:block;width:100%;border-radius:2px 2px 0 0;background:var(--ink-2)}
+  .bars i.base{background:var(--panel-2);box-shadow:inset 0 0 0 1px var(--outline)}
+  .bars span{font:500 10px 'Barlow';color:var(--ink-3)}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:10px;font:600 14px 'Barlow';opacity:0;transition:opacity 180ms ease,transform 180ms cubic-bezier(.23,1,.32,1);pointer-events:none;z-index:50}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  dialog{margin:auto;width:min(760px,94vw);border:0;border-radius:14px;background:var(--panel);color:var(--ink);padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog iframe{width:100%;height:60vh;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:12px}
+  .skeleton{color:var(--ink-3);padding:30px 0}
+  @media (max-width:1100px){.g3{grid-template-columns:1fr 1fr}.g3>:first-child{grid-column:1/3}.kpis{grid-template-columns:repeat(3,1fr)}.kpis div:nth-child(4){border-left:0}}
+  @media (max-width:760px){
+    #app.on{grid-template-columns:1fr}
+    aside{position:static;height:auto;padding:12px 12px 0;border-right:0;border-bottom:1px solid var(--line)}
+    nav.side{flex-direction:row;overflow-x:auto;margin-top:12px;padding-bottom:10px}
+    nav.side button{flex-shrink:0}
+    .me{display:none}
+    main{padding:16px}
+    .g3,.g2,.g3e{grid-template-columns:1fr}.g3>:first-child{grid-column:auto}
+    .kpis{grid-template-columns:1fr 1fr}.kpis div{border-left:0;border-top:1px solid var(--line)}.kpis div:nth-child(-n+2){border-top:0}
+    .call{flex-wrap:wrap}.acts{justify-content:flex-start}
+    .lamps{grid-template-columns:repeat(3,1fr)}
+  }
+  @media (prefers-reduced-motion:reduce){button:active:not(:disabled){transform:none}.toast{transition:opacity 180ms ease}}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <div class="login">
+    <svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg>
+    <h1>Pit Wall</h1>
+    <p id="loginText">The F1 Predictor admin. Enter your email and we'll send you a 6-digit code.</p>
+    <form id="emailForm">
+      <input class="field" id="email" type="email" autocomplete="email" placeholder="Your email" required>
+      <button class="btn red block" type="submit">Send me a code</button>
+    </form>
+    <form id="codeForm" hidden>
+      <input class="field code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="······" required>
+      <button class="btn red block" type="submit">Sign in</button>
+      <button class="btn block" type="button" id="backToEmail">Use a different email</button>
+    </form>
+    <div class="msg" id="loginMsg" role="status"></div>
+  </div>
+</section>
+
+<div id="app">
+  <aside>
+    <div class="brand"><svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg><div><b>PIT WALL</b><small>F1 Predictor admin</small></div></div>
+    <nav class="side" id="nav"></nav>
+    <div class="me"><b id="meEmail"></b>Signed in
+      <div class="row"><button class="btn" id="themeBtn" type="button">Light mode</button><button class="btn" id="signOut" type="button">Sign out</button></div>
+    </div>
+  </aside>
+  <main id="main"><div class="skeleton">Loading…</div></main>
+</div>
+
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* Pit Wall — the F1 Predictor admin page. Talks to /api/admin with a Supabase sign-in token. */
+const SB_URL = 'https://zeqxzyisqwemqsvspbyj.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcXh6eWlzcXdlbXFzdnNwYnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODM0MjUsImV4cCI6MjA5MzU1OTQyNX0.uDzYrylvgomvGiSH886LJ2zIO14VZpR-f12vWRzW2M0';
+const HOME_PAGE = 'weekend';   // first page after signing in
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => (n == null ? '—' : Number(n).toLocaleString());
+const store = { get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch{ return null; } }, set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }, del(k){ try{ localStorage.removeItem(k); }catch{} } };
+
+/* ── theme ── */
+function setTheme(t){ document.documentElement.dataset.theme = t; store.set('pw_theme', t); $('themeBtn').textContent = t === 'dark' ? 'Light mode' : 'Dark mode'; }
+setTheme(store.get('pw_theme') || 'dark');
+$('themeBtn').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
+function toast(text){ const t = $('toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600); }
+
+/* ── sign in: Supabase email code ── */
+async function gotrue(path, body){
+  const r = await fetch(`${SB_URL}/auth/v1/${path}`, { method:'POST', headers:{ apikey:SB_ANON, 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(j.msg || j.error_description || j.message || `Error ${r.status}`);
+  return j;
+}
+function saveSession(j){ store.set('pw_session', { access: j.access_token, refresh: j.refresh_token, until: Date.now() + (j.expires_in || 3600) * 1000 }); }
+async function token(){
+  const s = store.get('pw_session');
+  if(!s) return null;
+  if(s.until - Date.now() > 60000) return s.access;
+  try{ const j = await gotrue('token?grant_type=refresh_token', { refresh_token: s.refresh }); saveSession(j); return j.access_token; }
+  catch{ store.del('pw_session'); return null; }
+}
+$('emailForm').onsubmit = async e => {
+  e.preventDefault();
+  const email = $('email').value.trim(), msg = $('loginMsg');
+  msg.className = 'msg'; msg.textContent = 'Sending…';
+  try{
+    await gotrue('otp', { email, create_user: false });
+    $('emailForm').hidden = true; $('codeForm').hidden = false; $('code').focus();
+    $('loginText').textContent = `We sent a code to ${email}. It works for 10 minutes.`;
+    msg.textContent = '';
+  }catch(err){
+    msg.className = 'msg err';
+    msg.textContent = /rate|seconds/i.test(err.message) ? 'Too many codes asked for. Wait a minute and try again.' : 'Could not send a code to that email.';
+  }
+};
+$('codeForm').onsubmit = async e => {
+  e.preventDefault();
+  const msg = $('loginMsg');
+  msg.className = 'msg'; msg.textContent = 'Checking…';
+  try{
+    const j = await gotrue('verify', { type:'email', email: $('email').value.trim(), token: $('code').value.trim() });
+    saveSession(j); msg.textContent = ''; start();
+  }catch{ msg.className = 'msg err'; msg.textContent = 'That code is wrong or has expired.'; }
+};
+$('backToEmail').onclick = () => { $('codeForm').hidden = true; $('emailForm').hidden = false; $('loginText').textContent = "Enter your email and we'll send you a 6-digit code."; };
+$('signOut').onclick = async () => {
+  const t = await token();
+  if(t) fetch(`${SB_URL}/auth/v1/logout`, { method:'POST', headers:{ apikey:SB_ANON, Authorization:`Bearer ${t}` } }).catch(()=>{});
+  store.del('pw_session'); location.reload();
+};
+
+/* ── API ── */
+async function api(params, body){
+  const t = await token();
+  if(!t){ showLogin(); throw new Error('signed out'); }
+  const r = await fetch(`/api/admin?${new URLSearchParams(params)}`, body !== undefined
+    ? { method:'POST', headers:{ Authorization:`Bearer ${t}`, 'Content-Type':'application/json' }, body: JSON.stringify(body) }
+    : { headers:{ Authorization:`Bearer ${t}` } });
+  if(r.status === 401){ store.del('pw_session'); showLogin('Your session ended. Sign in again.'); throw new Error('signed out'); }
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(j.error || `Error ${r.status}`);
+  return j;
+}
+
+/* ── small drawing helpers ── */
+const ICON = {
+  weekend:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  overview:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
+  predictions:'<path d="M5 3v18M5 4h11l-2 4 2 4H5"/>',
+  ai:'<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
+  subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
+};
+const PAGES = [['weekend','This weekend'],['overview','Audience'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email']];
+function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
+function lineChart(points, { h = 260 } = {}){
+  const w = 640, L = 34, B = 22, T = 10;
+  const vals = points.map(p => p.v), max = Math.max(4, Math.ceil(Math.max(...vals, 0) / 4) * 4);
+  const X = i => L + i * (w - L - 8) / Math.max(1, points.length - 1), Y = v => h - B - v / max * (h - B - T);
+  let s = `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Visitors per day" style="display:block;margin-top:10px"><g font-family="Barlow" font-size="11" fill="var(--ink-3)">`;
+  for(let v = 0; v <= max; v += max / 4) s += `<line x1="${L}" x2="${w}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="0" y="${Y(v) + 4}">${Math.round(v)}</text>`;
+  const step = Math.max(1, Math.round(points.length / 5));
+  points.forEach((p, i) => { if(i % step === 0 || i === points.length - 1) s += `<text x="${X(i)}" y="${h - 4}" text-anchor="${i === points.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'}">${esc(p.label)}</text>`; });
+  s += `</g><path d="${points.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--chart)" stroke-width="2" stroke-linejoin="round"/>`;
+  points.forEach((p, i) => { if(p.race) s += `<circle cx="${X(i)}" cy="${Y(p.v)}" r="3.2" fill="var(--lamp)"><title>${esc(p.label)}: ${p.v}</title></circle>`; });
+  return s + '</svg>';
+}
+const STAGE = { beforeSprintQ:'Before sprint quali', afterSprintQ:'After sprint quali', afterSprint:'After sprint', beforeQuali:'Before quali', afterQuali:'After quali', final:'After the race' };
+const localTime = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+const ago = iso => { if(!iso) return '—'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+
+/* ── pages ── */
+let page = HOME_PAGE, cache = {}, range = 30;
+function nav(){
+  const badge = cache.needs ? `<em>${cache.needs}</em>` : '';
+  $('nav').innerHTML = PAGES.map(([k, l]) => `<button type="button" class="${k === page ? 'act' : ''}" data-p="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${l}${k === 'weekend' ? badge : ''}</button>`).join('');
+  $('nav').querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.p));
+}
+async function go(p){
+  page = p; nav();
+  history.replaceState(null, '', `#${p}`);
+  const main = $('main');
+  main.innerHTML = '<div class="skeleton">Loading…</div>';
+  try{ await RENDER[p](main); }
+  catch(e){ if(e.message !== 'signed out') main.innerHTML = `<div class="panel"><h2>Could not load this page</h2><p class="note" style="margin-top:6px">${esc(e.message)}</p><button class="btn" style="margin-top:12px" onclick="go('${p}')">Try again</button></div>`; }
+}
+
+/* When a stage's call can be made: the weekend window opens 3 days before the race;
+   an "after X" call once that session has ended. */
+function dueAt(stage, race){
+  const t = n => { const s = race.sessions.find(x => x.name === n); return s?.start ? Date.parse(s.start) : null; };
+  const open = Date.parse(race.date + 'T00:00:00Z') - 3 * 864e5;
+  return ({ beforeQuali: open, beforeSprintQ: open, afterSprintQ: t('Sprint quali') + 45 * 6e4, afterSprint: t('Sprint') + 60 * 6e4, afterQuali: t('Quali') + 60 * 6e4 })[stage] ?? open;
+}
+function callRow(c, race, past){
+  const due = dueAt(c.stage, race), ready = Date.now() >= due;
+  const tag = c.id == null ? `<span class="tag none">${past ? 'Never made' : ready ? 'Not made yet' : 'Not due yet'}</span>`
+    : c.hidden ? '<span class="tag none">Hidden</span>'
+    : c.ai ? '<span class="tag ai">AI</span>' : '<span class="tag base">Baseline</span>';
+  const what = c.id == null
+    ? (past || ready ? '' : `<span>made by itself from ${localTime(new Date(due).toISOString())}</span>`)
+    : `<span>${esc(c.winner || '?')} to win${c.winProb != null ? ` (${Math.round(c.winProb)}%)` : ''}${c.accuracy != null ? ` · scored ${c.accuracy}%` : ''} · ${ago(c.created_at)}</span>`;
+  const acts = [];
+  if(!past && ready && (c.id == null || !c.ai)) acts.push(`<button class="btn" data-run="predictions">${c.id == null ? 'Make it now' : 'Retry the AI'}</button>`);
+  if(c.id) acts.push(`<button class="btn" data-hide="${c.id}" data-h="${c.hidden ? 0 : 1}">${c.hidden ? 'Show on site' : 'Hide'}</button>`);
+  return `<div class="call"><div class="what"><b>${STAGE[c.stage] || c.stage}</b><small>${tag}${what}</small></div><span class="acts">${acts.join('')}</span></div>`;
+}
+function wireActions(root, reload){
+  root.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
+    b.disabled = true; const old = b.textContent; b.textContent = 'Working…';
+    try{
+      const r = await api({ action:'run' }, { job: b.dataset.run, all: b.dataset.all === '1' });
+      toast(b.dataset.run === 'predictions' ? (r.autoGenerated?.length ? `Made: ${r.autoGenerated.join(', ')}` : 'Nothing new to make right now') : 'Done');
+      reload();
+    }catch(e){ toast(e.message); b.disabled = false; b.textContent = old; }
+  });
+  root.querySelectorAll('[data-hide]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try{ await api({ action:'hide' }, { id: b.dataset.hide, hidden: b.dataset.h === '1' }); toast(b.dataset.h === '1' ? 'Hidden from the site' : 'Shown on the site again'); reload(); }
+    catch(e){ toast(e.message); b.disabled = false; }
+  });
+  root.querySelectorAll('[data-mail]').forEach(b => b.onclick = () => previewMail(b.dataset.mail));
+}
+
+const RENDER = {
+  async weekend(main){
+    const w = await api({ view:'weekend' });
+    const now = Date.now();
+    const short = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    const lamps = r => `<div class="lamps">${r.sessions.map(s => `<div class="${s.start && Date.parse(s.start) + 3600e3 < now ? 'on' : ''}"><i></i><b>${esc(s.name)}</b><small>${short(s.start)}</small></div>`).join('')}</div>`;
+    const days = r => Math.ceil((Date.parse(r.sessions.at(-1).start || r.date) - now) / 864e5);
+    let needs = 0;
+    const nx = w.next, ls = w.last;
+    if(nx) needs += nx.calls.filter(c => Date.now() >= dueAt(c.stage, nx) && (c.id == null || (!c.ai && !c.hidden))).length;
+    if(ls && !ls.newsletter) needs++;
+    cache.needs = needs; nav();
+    main.innerHTML = `
+      <div class="top"><h1>This weekend</h1><span class="note">Times in your timezone</span></div>
+      <div class="grid g2">
+        ${nx ? `<section class="panel"><h2>Round ${nx.round} · ${days(nx) > 0 ? `in ${days(nx)} day${days(nx) === 1 ? '' : 's'}` : 'race day'} <span>${esc(nx.circuit)}</span></h2>
+          <div class="cond" style="font-size:38px;line-height:1;text-transform:uppercase;margin-top:8px">${esc(nx.name)}</div>
+          ${lamps(nx)}
+          <h2 style="margin-top:18px">The AI's calls</h2>${nx.calls.map(c => callRow(c, nx, false)).join('')}
+          <p class="note" style="margin-top:8px">The AI makes each call by itself after the session ends; the hourly job retries baselines.</p></section>` : '<section class="panel"><h2>No race coming up</h2></section>'}
+        ${ls ? `<section class="panel"><h2>Last weekend · Round ${ls.round} <span>${esc(ls.name)}</span></h2>
+          ${ls.calls.map(c => callRow(c, ls, true)).join('')}
+          <div class="call"><div class="what"><b>Race report email</b><small>${ls.newsletter ? `Sent ${ago(ls.newsletter.ts)} to ${ls.newsletter.sent} subscriber${ls.newsletter.sent === 1 ? '' : 's'}${ls.newsletter.failed ? ` · ${ls.newsletter.failed} failed` : ''}` : '<span class="tag none">Not sent from here yet</span>'}</small></div>
+            <span class="acts"><button class="btn red" data-mail="${esc(ls.circuitId)}">Preview${ls.newsletter ? '' : ' and send'}</button></span></div></section>` : ''}
+      </div>`;
+    wireActions(main, () => go('weekend'));
+  },
+
+  async overview(main){
+    const o = await api({ view:'overview', days: range });
+    const t = o.traffic || {}, top = t.top || {};
+    const prev = t.prev_visitors, delta = prev ? Math.round((t.visitors - prev) / prev * 100) : null;
+    const raceDays = new Set();
+    const pts = (t.per_day || []).map(d => { const dt = new Date(d.day + 'T12:00:00Z'); return { v: d.visitors, label: dt.toLocaleDateString(undefined, { day:'numeric', month:'short' }), race: dt.getUTCDay() === 0 }; });
+    const list = (k, n = 8) => (top[k] || []).slice(0, n);
+    const ev = Object.fromEntries((top.events || []).map(e => [e.key, e.value]));
+    const ai = o.ai || {};
+    main.innerHTML = `
+      <div class="top"><h1>Audience</h1>
+        <select class="pill" id="range" aria-label="Date range">${[7,30,90].map(d => `<option value="${d}" ${d === range ? 'selected' : ''}>Last ${d} days</option>`).join('')}</select>
+        <span class="pill"><i></i>${fmt(t.live_now)} on the site now</span>
+        <span class="note" style="margin-left:auto">Counted without cookies · visitors who ask not to be tracked are left out</span></div>
+      <div class="kpis">
+        <div><span>Visitors</span><b>${fmt(t.visitors)}</b><small>${delta == null ? 'No earlier period yet' : `${delta >= 0 ? '+' : ''}${delta}% on the previous ${range} days`}</small></div>
+        <div><span>Page views</span><b>${fmt(t.views)}</b><small>${t.visitors ? (t.views / t.visitors).toFixed(1) + ' per visitor' : '—'}</small></div>
+        <div><span>Used the installed app</span><b>${fmt(t.installed)}</b><small>Opened from the home screen</small></div>
+        <div><span>Email subscribers</span><b>${fmt(o.subscribers)}</b><small>Race report list</small></div>
+        <div><span>Push subscribers</span><b>${fmt(o.push)}</b><small>Notifications on</small></div>
+        <div><span>AI season score</span><b>${ai.average == null ? '—' : ai.average + '%'}</b><small>${ai.races || 0} races scored</small></div>
+      </div>
+      <div class="grid g3">
+        <section class="panel"><h2>Visitors per day <span>Red dots are Sundays</span></h2>${pts.length ? lineChart(pts) : '<div class="empty">No visits recorded yet</div>'}</section>
+        <section class="panel"><h2>Countries <span>Visitors</span></h2>${bars(list('countries').map(x => ({ ...x, label: regionName(x.key) })))}</section>
+        <section class="panel"><h2>Screens <span>Views</span></h2>${bars(list('screens', 7).map(x => ({ ...x, label: SCREEN[x.key] || x.key })))}</section>
+      </div>
+      <div class="grid g3e">
+        <section class="panel"><h2>Devices</h2>${bars(list('devices').map(x => ({ ...x, label: x.key[0].toUpperCase() + x.key.slice(1) })))}<h2 style="margin-top:12px">Systems</h2>${bars(list('os', 5))}</section>
+        <section class="panel"><h2>Browsers</h2>${bars(list('browsers', 6))}<h2 style="margin-top:12px">Came from</h2>${bars(list('referrers', 5))}</section>
+        <section class="panel"><h2>What people did</h2>
+          <div class="tr"><span class="k">Asked the AI</span><span class="v" style="margin-left:auto">${fmt(ev.generate || 0)}</span></div>
+          <div class="tr"><span class="k">Shared a call</span><span class="v" style="margin-left:auto">${fmt(ev.share || 0)}</span></div>
+          <div class="tr"><span class="k">Turned on alerts</span><span class="v" style="margin-left:auto">${fmt(ev.push_on || 0)}</span></div>
+          <div class="tr"><span class="k">Joined the emails</span><span class="v" style="margin-left:auto">${fmt(ev.email_join || 0)}</span></div>
+          <div class="tr"><span class="k">Installed the app</span><span class="v" style="margin-left:auto">${fmt(ev.install || 0)}</span></div>
+          <h2 style="margin-top:12px">Errors <span>${fmt(ev.error || 0)}</span></h2>
+          ${(t.errors || []).slice(0, 4).map(e => `<div class="note" style="padding:4px 0">${esc(e.detail)} · ${esc(e.browser || '')} · ${ago(e.ts)}</div>`).join('') || '<div class="empty">None</div>'}
+        </section>
+      </div>`;
+    $('range').onchange = e => { range = +e.target.value; go('overview'); };
+  },
+
+  async predictions(main){
+    const { predictions } = await api({ view:'predictions' });
+    const rows = predictions.filter(p => p.stage !== 'final');
+    main.innerHTML = `
+      <div class="top"><h1>Predictions</h1><span class="note">${rows.length} saved · ${rows.filter(p => p.fallback).length} baselines · ${rows.filter(p => p.hidden).length} hidden</span>
+        <button class="btn" style="margin-left:auto" data-run="scoring" data-all="1">Rescore the season</button></div>
+      <section class="panel" style="margin-top:16px;overflow-x:auto"><table>
+        <thead><tr><th>Round</th><th>Race</th><th>Stage</th><th>Type</th><th>Made by</th><th>Winner call</th><th class="n">Score</th><th>Saved</th><th></th></tr></thead>
+        <tbody>${rows.map(p => `<tr style="${p.hidden ? 'opacity:.55' : ''}"><td>R${p.round}</td><td>${esc(p.race_name || p.circuit_id)}</td><td>${STAGE[p.stage] || esc(p.stage)}</td><td>${p.pred_type === 'sprint' ? 'Sprint' : 'Race'}</td>
+          <td>${p.fallback ? '<span class="tag base">Baseline</span>' : '<span class="tag ai">AI</span>'}</td><td>${esc(p.winner || '—')}</td>
+          <td class="n">${p.accuracy == null ? '—' : p.accuracy + '%'}</td><td class="note">${localTime(p.created_at)}</td>
+          <td class="n"><button class="btn" data-hide="${p.id}" data-h="${p.hidden ? 0 : 1}">${p.hidden ? 'Show' : 'Hide'}</button></td></tr>`).join('')}</tbody></table></section>`;
+    wireActions(main, () => go('predictions'));
+  },
+
+  async ai(main){
+    const d = await api({ view:'ai', days: 7 });
+    const c = d.calls || {}, ai = d.ai || {};
+    const rate = c.attempts ? Math.round(c.ok / c.attempts * 100) : null;
+    const JOB = { 'auto-results':['Scoring results','scoring','Every 2 hours'], 'supabase-sync':['Session sync','sync','Every 30 min'], 'retry-predictions':['AI calls and retries','predictions','Every hour'], 'rollup-analytics':['Daily visitor totals', null, 'Nightly'] };
+    main.innerHTML = `
+      <div class="top"><h1>AI and jobs</h1><span class="note">Last 7 days</span></div>
+      <div class="kpis">
+        <div><span>AI attempts</span><b>${fmt(c.attempts)}</b><small>Each model tried counts once</small></div>
+        <div><span>Answered</span><b>${rate == null ? '—' : rate + '%'}</b><small>${fmt(c.ok)} good answers</small></div>
+        <div><span>From the Generate button</span><b>${fmt(c.by_source?.user || 0)}</b><small>Calls asked for by visitors</small></div>
+        <div><span>Made automatically</span><b>${fmt(c.by_source?.auto || 0)}</b><small>After each session</small></div>
+        <div><span>Winner called</span><b>${ai.aiRaces ? `${ai.winners}/${ai.aiRaces}` : '—'}</b><small>AI races this season</small></div>
+        <div><span>Podium places right</span><b>${ai.podiumTotal ? `${ai.podium}/${ai.podiumTotal}` : '—'}</b><small>Its top three vs the real one</small></div>
+      </div>
+      <div class="grid g2">
+        <section class="panel"><h2>Models <span>Free Gemini models, tried in order</span></h2>
+          ${c.by_model?.length ? `<table><thead><tr><th>Model</th><th class="n">Tries</th><th class="n">Answered</th><th class="n">Typical</th><th class="n">Slow (95%)</th></tr></thead><tbody>
+          ${c.by_model.map(m => `<tr><td>${esc(m.model)}</td><td class="n">${m.attempts}</td><td class="n">${m.attempts ? Math.round(m.ok / m.attempts * 100) : 0}%</td><td class="n">${m.p50 ? (m.p50 / 1000).toFixed(1) + 's' : '—'}</td><td class="n">${m.p95 ? (m.p95 / 1000).toFixed(1) + 's' : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No AI calls recorded yet. They appear here from the next one.</div>'}
+          <h2 style="margin-top:14px">Recent failures</h2>
+          ${(c.recent_errors || []).map(e => `<div class="note" style="padding:4px 0">${ago(e.ts)} · ${esc(e.model)} · ${esc(String(e.error).slice(0, 90))}</div>`).join('') || '<div class="empty">None</div>'}
+        </section>
+        <section class="panel"><h2>Scheduled jobs</h2>
+          <table><thead><tr><th>Job</th><th>Every</th><th class="n">Runs</th><th>Last run</th><th></th></tr></thead><tbody>
+          ${(d.jobs || []).map(j => `<tr><td><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span>${JOB[j.jobname]?.[0] || esc(j.jobname)}</td><td class="note">${JOB[j.jobname]?.[2] || esc(j.schedule)}</td><td class="n">${j.runs_7d}${j.failed_7d ? ` · ${j.failed_7d} failed` : ''}</td><td class="note">${j.last_start ? ago(j.last_start) : 'not yet'}</td>
+            <td class="n">${JOB[j.jobname]?.[1] ? `<button class="btn" data-run="${JOB[j.jobname][1]}">Run now</button>` : ''}</td></tr>`).join('')}</tbody></table>
+          <h2 style="margin-top:16px">Score by race <span>Average ${ai.average ?? '—'}% · outlined bars were baselines</span></h2>
+          <div class="bars">${(ai.perRace || []).map(r => `<div title="R${r.round}: ${r.accuracy}%"><i class="${r.baseline ? 'base' : ''}" style="height:${Math.max(3, r.accuracy * 1.6)}px"></i><span>${r.round}</span></div>`).join('')}</div>
+        </section>
+      </div>`;
+    wireActions(main, () => go('ai'));
+  },
+
+  async subscribers(main){
+    const d = await api({ view:'subscribers' });
+    const active = d.subscribers.filter(s => s.active !== false);
+    main.innerHTML = `
+      <div class="top"><h1>Subscribers and email</h1><span class="note">${active.length} email · ${d.push.length} push</span>
+        <button class="btn red" style="margin-left:auto" data-mail="">Preview the latest race report</button></div>
+      <div class="grid g2">
+        <section class="panel"><h2>Race report emails <span>${active.length} active</span></h2>
+          <table><thead><tr><th>Email</th><th>Joined</th><th>Status</th></tr></thead><tbody>
+          ${d.subscribers.map(s => `<tr><td>${esc(s.email)}</td><td class="note">${s.subscribed_at ? new Date(s.subscribed_at).toLocaleDateString() : '—'}</td><td>${s.active === false ? '<span class="tag none">Unsubscribed</span>' : '<span class="tag ai">Active</span>'}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">No subscribers yet</td></tr>'}</tbody></table>
+        </section>
+        <section class="panel"><h2>Notifications <span>Devices</span></h2>
+          <table><thead><tr><th>Service</th><th>Since</th><th class="n">Alerts on</th></tr></thead><tbody>
+          ${d.push.map(p => `<tr><td>${esc(p.service.replace('web.push.apple.com', 'Apple (iPhone, Mac)').replace('fcm.googleapis.com', 'Google (Android, Chrome)'))}</td><td class="note">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td><td class="n">${p.on}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nobody yet</td></tr>'}</tbody></table>
+          <h2 style="margin-top:16px">Emails sent</h2>
+          ${d.sends.map(s => `<div class="tr"><span class="k">R${s.round} ${esc(s.circuit_id)}</span><span class="note" style="margin-left:auto">${s.sent} sent${s.failed ? ` · ${s.failed} failed` : ''} · ${ago(s.ts)}</span></div>`).join('') || '<div class="empty">None recorded yet</div>'}
+        </section>
+      </div>`;
+    wireActions(main, () => go('subscribers'));
+  },
+};
+
+async function previewMail(circuit){
+  const dlg = $('dlg'), body = $('dlgBody');
+  body.innerHTML = '<div class="skeleton">Building the email…</div>';
+  dlg.showModal();
+  try{
+    const p = await api({ action:'newsletter' }, { circuit: circuit || undefined });
+    body.innerHTML = `<h2 style="font:600 17px Barlow">${esc(p.subject)}</h2><p class="note" style="margin-top:4px">Round ${p.round} · goes to ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'}</p>
+      <iframe sandbox title="Email preview"></iframe>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" id="dlgClose">Close</button><button class="btn red" id="dlgSend" ${p.recipients ? '' : 'disabled'}>Send to ${p.recipients}</button></div>`;
+    body.querySelector('iframe').srcdoc = p.html;
+    $('dlgClose').onclick = () => dlg.close();
+    $('dlgSend').onclick = async e => {
+      if(!confirm(`Send "${p.subject}" to ${p.recipients} subscriber${p.recipients === 1 ? '' : 's'} now?`)) return;
+      e.target.disabled = true; e.target.textContent = 'Sending…';
+      try{ const r = await api({ action:'newsletter' }, { circuit: p.circuit, send: true }); dlg.close(); toast(`Sent to ${r.sent}${r.failed ? `, ${r.failed} failed` : ''}`); go(page); }
+      catch(err){ toast(err.message); e.target.disabled = false; e.target.textContent = `Send to ${p.recipients}`; }
+    };
+  }catch(e){ body.innerHTML = `<p>${esc(e.message)}</p><div style="text-align:right;margin-top:12px"><button class="btn" onclick="document.getElementById('dlg').close()">Close</button></div>`; }
+}
+
+const SCREEN = { pred:'Predict', comp:'Reality', live:'Live', arch:'Predictions archive', hist:'Season', cal:'Calendar', anlt:'Analytics', pits:'Pit stops' };
+const regionNames = (() => { try{ return new Intl.DisplayNames(undefined, { type:'region' }); }catch{ return null; } })();
+const regionName = code => { try{ return code && code !== '?' ? (regionNames?.of(code) || code) : 'Unknown'; }catch{ return code; } };
+
+/* ── start ── */
+function showLogin(text){
+  $('app').classList.remove('on'); $('login').hidden = false;
+  if(text){ const m = $('loginMsg'); m.className = 'msg err'; m.textContent = text; }
+}
+async function start(){
+  try{
+    const me = await api({ view:'me' });
+    $('meEmail').textContent = me.email;
+    $('login').hidden = true; $('app').classList.add('on');
+    const want = location.hash.slice(1);
+    go(PAGES.some(p => p[0] === want) ? want : HOME_PAGE);
+  }catch(e){ if(e.message !== 'signed out') showLogin(e.message === 'Sign in first' ? 'This account is not an admin.' : e.message); }
+}
+token().then(t => t ? start() : showLogin());
+</script>
+</body>
+</html>

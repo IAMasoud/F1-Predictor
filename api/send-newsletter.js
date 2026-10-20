@@ -276,7 +276,7 @@ export default async function handler(req, res) {
     const grid = (sess.grid_data || []).filter(g => g.abbr && g.pos).sort((x, y) => x.pos - y.pos);
 
     // The AI's final pre-race prediction for this race (baselines don't count as AI).
-    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${meta.id}&round=eq.${meta.round}&pred_type=eq.race&stage=neq.final&select=stage,prediction,accuracy`, { headers: sbHeaders });
+    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${meta.id}&round=eq.${meta.round}&pred_type=eq.race&stage=neq.final&hidden=eq.false&select=stage,prediction,accuracy`, { headers: sbHeaders });
     const best = ((await predR.json()) || [])
       .filter(p => p.prediction?.top10?.length && !p.prediction._fallback)
       .sort((x, y) => (PRE_RACE_STAGES.indexOf(x.stage) + 1 || 50) - (PRE_RACE_STAGES.indexOf(y.stage) + 1 || 50))[0];
@@ -306,11 +306,18 @@ export default async function handler(req, res) {
     const APP = 'https://f1-predictor-theta.vercel.app';
     const unsubUrl = id => { try { return `${APP}/api/unsubscribe?id=${id}&t=${unsubToken(id)}`; } catch { return `${APP}/?unsubscribe=1`; } };
 
+    const winnerAbbr = grid[0]?.abbr;
+    const subject = winnerAbbr ? `🏁 ${raceName}: ${winnerAbbr} wins — full race report` : `🏁 ${raceName} — race report`;
+
+    // ?preview=1 (from the admin page): return the email instead of sending it.
+    if (req.query?.preview === '1' || req.body?.preview === true) {
+      return res.status(200).json({ ok: true, preview: true, subject, race: raceName, round: meta.round, circuit: meta.id,
+        recipients: subs.length, html: html.replace('%%UNSUB_URL%%', '#') });
+    }
+
     // Send via Brevo — free tier sends to any subscriber, no domain needed
     let sent = 0, failed = 0;
     const errors = [];
-    const winnerAbbr = grid[0]?.abbr;
-    const subject = winnerAbbr ? `🏁 ${raceName}: ${winnerAbbr} wins — full race report` : `🏁 ${raceName} — race report`;
 
     for (const s of subs) {
       try {
@@ -333,6 +340,13 @@ export default async function handler(req, res) {
         else { failed++; errors.push({ email: s.email, status: r.status, body: (await r.text()).slice(0, 200) }); }
       } catch (e) { failed++; errors.push({ email: s.email, error: e.message }); }
     }
+
+    // Keep a record for the admin page ("was the Singapore report sent?").
+    await fetch(`${SB_URL}/rest/v1/newsletter_log`, {
+      method: 'POST',
+      headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ circuit_id: meta.id, round: meta.round, season: SEASON, sent, failed }),
+    }).catch(() => {});
 
     res.status(200).json({
       ok: true,
