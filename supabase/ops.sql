@@ -61,6 +61,50 @@ create index if not exists weekly_reports_created_idx on public.weekly_reports (
 alter table public.weekly_reports enable row level security;
 revoke all on public.weekly_reports from anon, authenticated;
 
+-- One report per week: making it again replaces it.
+create unique index if not exists weekly_reports_week_once on public.weekly_reports (week_end);
+
+-- The weekly report's numbers for exact dates (whole UTC days from p_start to p_end), with the
+-- same week before for comparison. Server-only, like the admin_* functions.
+create or replace function public.report_week(p_start date, p_end date)
+returns jsonb language plpgsql security definer set search_path = public as $fn$
+declare
+  s  timestamptz := p_start::timestamptz;
+  t  timestamptz := (p_end + 1)::timestamptz;
+  ps timestamptz := s - make_interval(days => (p_end - p_start) + 1);
+  out jsonb;
+begin
+  with e as (select * from events where ts >= s and ts < t),
+  top as (
+    select metric, jsonb_agg(jsonb_build_object('key', key, 'value', value) order by value desc) list from (
+      select 'countries' metric, coalesce(country, '?') key, count(distinct visitor) value from e group by 2
+      union all select 'screens', coalesce(screen, '?'), count(*) from e where name in ('view', 'screen') group by 2
+      union all select 'events', name, count(*) from e group by 2
+    ) x group by metric
+  ),
+  per_day as (
+    select d::date as day,
+      coalesce(nullif((select count(distinct visitor) from e where ts >= d and ts < d + interval '1 day'), 0),
+               (select value from daily_stats where day = d::date and metric = 'visitors' and key = ''), 0) visitors
+    from generate_series(s, t - interval '1 day', interval '1 day') d
+  )
+  select jsonb_build_object(
+    'visitors', (select count(distinct visitor) from e),
+    'views', (select count(*) from e where name = 'view'),
+    'installed', (select count(distinct visitor) from e where standalone or name = 'install'),
+    'prev_visitors', (select count(distinct visitor) from events where ts >= ps and ts < s),
+    'errors', (select count(*) from e where name = 'error'),
+    'per_day', (select jsonb_agg(jsonb_build_object('day', day, 'visitors', visitors) order by day) from per_day),
+    'top', (select jsonb_object_agg(metric, list) from top),
+    'ai_attempts', (select count(*) from ai_calls where ts >= s and ts < t),
+    'ai_ok', (select count(*) from ai_calls where ts >= s and ts < t and ok),
+    'ai_errors', (select jsonb_agg(z) from (select jsonb_build_object('ts', ts, 'model', model, 'error', error) z
+                  from ai_calls where ts >= s and ts < t and not ok order by ts desc limit 3) q)
+  ) into out;
+  return out;
+end $fn$;
+revoke all on function public.report_week(date, date) from public, anon, authenticated;
+
 insert into storage.buckets (id, name, public) values ('reports', 'reports', false) on conflict (id) do nothing;
 
 -- ── Scheduled jobs ──

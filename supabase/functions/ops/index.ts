@@ -270,18 +270,18 @@ async function gather() {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 1);   // end of yesterday
   const start = new Date(end.getTime() - 7 * DAY + 1);
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const startIso = start.toISOString(), endIso = end.toISOString();
+  const startIso = start.toISOString(), endIso = end.toISOString(), afterIso = new Date(end.getTime() + 1).toISOString();
   const { season, races } = await loadSeason();
 
-  const [traffic, ai, subs, push, preds, scans, log, sends] = await Promise.all([
-    rpc('admin_overview', { days: 7 }),
-    rpc('admin_ai', { days: 7 }),
+  // Every number covers exactly the dates printed on the report (whole UTC days).
+  const [traffic, subs, push, preds, scans, log, sends] = await Promise.all([
+    rpc('report_week', { p_start: iso(start), p_end: iso(end) }),
     db('subscribers?select=id,subscribed_at,active'),
     db('push_subscriptions?select=created_at'),
     db('predictions?select=round,circuit_id,stage,pred_type,created_at,accuracy,hidden,actual_results,fallback:prediction->_fallback,top10:prediction->top10&stage=neq.final&order=created_at.desc&limit=500'),
-    db(`health_checks?ts=gte.${startIso}&select=ts,ok,failed,checks&order=ts.asc`),
+    db(`health_checks?ts=gte.${startIso}&ts=lt.${afterIso}&select=ts,ok,failed,checks&order=ts.asc`),
     db(`maintenance_log?select=*&order=ts.desc&limit=200`),
-    db(`newsletter_log?ts=gte.${startIso}&sent=gt.0&select=round,circuit_id,sent,ts,kind`),
+    db(`newsletter_log?ts=gte.${startIso}&ts=lt.${afterIso}&sent=gt.0&select=round,circuit_id,sent,ts,kind`),
   ]);
   const inWeek = (t?: string) => !!t && t >= startIso && t <= endIso;
   const active = (subs || []).filter((s: Json) => s.active !== false);
@@ -312,9 +312,9 @@ async function gather() {
     visitors: traffic?.visitors ?? 0, prevVisitors: traffic?.prev_visitors ?? null, views: traffic?.views ?? 0, installed: traffic?.installed ?? 0,
     countries: (traffic?.top?.countries || []).slice(0, 5), screens: (traffic?.top?.screens || []).slice(0, 5), events: traffic?.top?.events || [],
     perDay: (traffic?.per_day || []).slice(-7).map((d: Json) => ({ day: d.day, visitors: d.visitors || 0 })),
-    errors: (traffic?.top?.events || []).find((e: Json) => e.key === 'error')?.value || 0,
+    errors: traffic?.errors ?? 0,
     subscribers: active.length, newSubs, push: (push || []).length,
-    aiAttempts: ai?.attempts ?? 0, aiOk: ai?.ok ?? 0, aiErrors: (ai?.recent_errors || []).slice(0, 3),
+    aiAttempts: traffic?.ai_attempts ?? 0, aiOk: traffic?.ai_ok ?? 0, aiErrors: (traffic?.ai_errors || []).slice(0, 1),
     calls: weekPreds.length, baselines: weekPreds.filter((p: Json) => p.fallback === true).length,
     weekRaces, seasonAvg, seasonRaces: scored.length,
     scans: (scans || []).length, scansOk: (scans || []).filter((s: Json) => s.ok).length, failedChecks: [...new Set(failedChecks)],
@@ -378,7 +378,7 @@ async function buildPdf(w: Json) {
   const aiRate = w.aiAttempts ? pct(w.aiOk, w.aiAttempts) : null;
   const wr = w.weekRaces[0];
   box(M, y, 'AI answered', aiRate == null ? '-' : `${aiRate}%`, w.aiAttempts ? `${w.aiOk} of ${w.aiAttempts} attempts` : 'no calls needed', aiRate == null ? undefined : aiRate >= 50);
-  box(M + (bw + 10), y, 'Calls made', String(w.calls), w.baselines ? `${w.baselines} baseline${w.baselines === 1 ? '' : 's'} (AI busy)` : 'all by the AI', w.baselines ? false : true);
+  box(M + (bw + 10), y, 'Calls made', String(w.calls), !w.calls ? 'none needed' : w.baselines ? `${w.baselines} baseline${w.baselines === 1 ? '' : 's'} (AI busy)` : 'all by the AI', !w.calls ? undefined : w.baselines ? false : true);
   box(M + 2 * (bw + 10), y, wr ? `${wr.name.replace(' Grand Prix', '')} score` : 'Race this week', wr ? (wr.score == null ? 'not scored' : `${wr.score}%`) : 'no race', wr ? (wr.called && wr.winner ? `called ${wr.called}, ${wr.winner} won` : '') : '');
   box(M + 3 * (bw + 10), y, 'Season average', w.seasonAvg == null ? '-' : `${w.seasonAvg}%`, `${w.seasonRaces} races scored`);
   y -= 84;
@@ -393,7 +393,9 @@ async function buildPdf(w: Json) {
   };
 
   section('Site health');
-  line(`${w.scans} of 7 daily scans ran, ${w.scansOk} found nothing wrong.`, { bullet: w.scansOk === w.scans && w.scans ? GAIN : RED });
+  line(!w.scans ? 'No daily scans ran this week.'
+    : `${w.scans} of 7 daily scans ran: ${w.scansOk === w.scans ? 'all clean' : `${w.scans - w.scansOk} found a problem, ${w.scansOk} clean`}.`,
+    { bullet: w.scans && w.scansOk === w.scans ? GAIN : RED });
   if (w.failedChecks.length) line(`Problems seen this week: ${w.failedChecks.join(', ')}.`);
   if (w.errors) line(`${w.errors} error${w.errors === 1 ? '' : 's'} in visitors' browsers this week.`);
   if (w.sends.length) w.sends.forEach((s: Json) => line(`Race report for round ${s.round} went to ${s.sent} subscriber${s.sent === 1 ? '' : 's'}${s.kind === 'auto' ? ', by itself' : ''}.`, { bullet: GAIN }));
@@ -413,8 +415,8 @@ async function buildPdf(w: Json) {
   section('The AI this week');
   if (w.weekRaces.length) w.weekRaces.forEach((r: Json) => line(`${r.name}: ${r.score == null ? 'not scored yet' : `${r.score}%`}${r.baseline ? ' (baseline)' : ''}${r.called ? `, called ${r.called}` : ''}${r.winner ? `, ${r.winner} won` : ''}.`, { bullet: INK }));
   else line('No race this week.', { bullet: DIM, color: MUTED });
-  line(`${w.calls} call${w.calls === 1 ? '' : 's'} saved, ${w.baselines} of them baseline${w.baselines === 1 ? '' : 's'}.`, { bullet: w.baselines ? RED : GAIN });
-  (w.aiErrors || []).slice(0, 2).forEach((e: Json) => line(`Last AI failure: ${String(e.model || '')} ${String(e.error || '').slice(0, 80)}`, { bullet: DIM, color: MUTED }));
+  line(!w.calls ? 'No calls were needed this week.' : `${w.calls} call${w.calls === 1 ? '' : 's'} saved, ${w.baselines ? `${w.baselines} of them baseline${w.baselines === 1 ? '' : 's'}` : 'all by the AI'}.`, { bullet: w.baselines ? RED : GAIN });
+  (w.aiErrors || []).slice(0, 1).forEach((e: Json) => line(`Last AI failure: ${String(e.model || '')} ${String(e.error || '').slice(0, 80)}`, { bullet: DIM, color: MUTED }));
   y -= 6;
 
   // Two small lists side by side
@@ -507,7 +509,8 @@ async function weekly() {
   const delivered = { sent: Object.entries(results).filter(([, v]) => v === 'ok').map(([k]) => k), failed: Object.fromEntries(Object.entries(results).filter(([, v]) => v !== 'ok')) };
   const summary = { visitors: w.visitors, views: w.views, subscribers: w.subscribers, newSubs: w.newSubs, aiAttempts: w.aiAttempts, aiOk: w.aiOk, calls: w.calls, baselines: w.baselines,
     weekRaces: w.weekRaces, scans: w.scans, scansOk: w.scansOk, fixed: w.fixed.length, open: w.open.length };
-  const row = await db('weekly_reports', { method: 'POST', prefer: 'return=representation', body: { week_start: w.start, week_end: w.end, path, summary, delivered } });
+  const row = await db('weekly_reports?on_conflict=week_end', { method: 'POST', prefer: 'resolution=merge-duplicates,return=representation',
+    body: { week_start: w.start, week_end: w.end, path, summary, delivered, created_at: new Date().toISOString() } });
   return { ok: true, id: row?.[0]?.id, week: `${w.start}..${w.end}`, bytes: pdf.length, delivered: delivered.sent, failed: delivered.failed };
 }
 
