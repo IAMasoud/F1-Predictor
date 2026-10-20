@@ -645,14 +645,22 @@ async function scrPitsRender(){
   const race = loSelectedRace();
   let sessKey = currentRaceSessKey, meetKey = currentMeetingKey;
   const head = `<p class="scr-sub">${race ? esc(race.name) + ' · ' : ''}tyre strategy and stop times from the race.</p>`;
+  const again = '<button type="button" class="btn2" style="margin-top:12px" onclick="scrPitsRender()">Try again</button>';
+  const busy = () => { el.innerHTML = head + `<div class="empty" style="margin-top:12px"><b>OpenF1 is busy right now.</b><p>Its free data service limits how often it can be asked. Try again in a minute.</p>${again}</div>`; };
+  of1RateLimited = false;
+  // OpenF1's free tier allows about 3 requests a second, so space out the ones not already cached.
+  const pace = url => of1Cache[url] ? Promise.resolve() : new Promise(r => setTimeout(r, 350));
+  const get = async url => { await pace(url); return of1Fetch(url); };
   // Finished races load from the cloud copy, which skips OpenF1, so look the race session up here.
   if(!sessKey && race && scrRaceEnd(race) < Date.now()){
     el.innerHTML = head + '<p class="scr-sub" style="padding:16px 0">Loading the stops…</p>';
     try{
       const mtg = await getOf1Meeting(race);
+      if(mtg) await new Promise(r => setTimeout(r, 350));
       const rs = mtg ? ((await getOf1Sessions(mtg.meeting_key)) || []).find(s => s.session_name === 'Race') : null;
       if(rs){ sessKey = rs.session_key; meetKey = mtg.meeting_key; }
-    }catch(e){}
+    }catch(e){ if(/429/.test(e.message)) of1RateLimited = true; }
+    if(!sessKey && of1RateLimited) return busy();
   }
   if(!sessKey){
     el.innerHTML = head + `<div class="empty" style="margin-top:12px"><b>Pit stops appear after the race.</b><p>During the race, the Live screen shows how many times each car has stopped.</p></div>`;
@@ -661,16 +669,22 @@ async function scrPitsRender(){
   el.innerHTML = head + '<p class="scr-sub" style="padding:16px 0">Loading the stops…</p>';
   try{
     // One request at a time: OpenF1 limits bursts.
-    const stints = await of1Fetch(`${OPENF1}/stints?session_key=${sessKey}`);
-    if(!stints?.length){ el.innerHTML = head + '<div class="empty" style="margin-top:12px"><b>Not published yet.</b><p>Stop data usually appears within an hour of the flag.</p></div>'; return; }
-    const pits = await of1Fetch(`${OPENF1}/pit?session_key=${sessKey}`);
-    const list = await of1Fetch(`${OPENF1}/drivers?session_key=${sessKey}&meeting_key=${meetKey}`);
+    const stints = await get(`${OPENF1}/stints?session_key=${sessKey}`);
+    if(!stints?.length){
+      if(of1RateLimited) return busy();
+      const recent = race && Date.now() - scrRaceEnd(race) < 6 * 3600e3;
+      el.innerHTML = head + `<div class="empty" style="margin-top:12px">${recent ? '<b>Not published yet.</b><p>Stop data usually appears within an hour of the flag.</p>' : '<b>No stop data for this race.</b><p>OpenF1 did not publish pit-stop data for it.</p>'}</div>`;
+      return;
+    }
+    const pits = await get(`${OPENF1}/pit?session_key=${sessKey}`);
+    const list = await get(`${OPENF1}/drivers?session_key=${sessKey}&meeting_key=${meetKey}`);
+    if(of1RateLimited) return busy();
     const ab = {}; (list || []).forEach(d => { ab[d.driver_number] = String(d.name_acronym || '').toUpperCase(); });
     // Finishing order from the official result when we have it, else OpenF1's last positions.
     const done = race && scrGPs().find(r => r.circuitId === race.circuitId && String(r.round) === String(race.round));
     const finish = {};
     if(done) done.results.forEach((id, i) => { finish[scrAbbr(id)] = i + 1; });
-    else (await of1Fetch(`${OPENF1}/position?session_key=${sessKey}`) || []).forEach(p => { const a = ab[p.driver_number]; if(a && (!finish[a] || p.date > finish[a + '_d'])){ finish[a] = p.position; finish[a + '_d'] = p.date; } });
+    else (await get(`${OPENF1}/position?session_key=${sessKey}`) || []).forEach(p => { const a = ab[p.driver_number]; if(a && (!finish[a] || p.date > finish[a + '_d'])){ finish[a] = p.position; finish[a + '_d'] = p.date; } });
     const posOf = n => finish[ab[n]] || 99;
     const byDrv = {}; stints.forEach(s => (byDrv[s.driver_number] ||= []).push(s));
     // stop_duration is the time stationary; when it's missing, pit_duration (the whole pit lane) is shown instead.
@@ -700,7 +714,8 @@ async function scrPitsRender(){
     h += '</div>';
     el.innerHTML = h;
   }catch(e){
-    el.innerHTML = head + `<div class="empty" style="margin-top:12px"><b>Could not load the stops.</b><p>${esc(e.message)}</p></div>`;
+    if(/429/.test(e.message)) return busy();
+    el.innerHTML = head + `<div class="empty" style="margin-top:12px"><b>Could not load the stops.</b><p>Check your connection, then try again.</p>${again}</div>`;
   }
 }
 
