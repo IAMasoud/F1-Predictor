@@ -38,8 +38,12 @@ const TEAM_COLORS = {
   williams:'#64C4FF', aston_martin:'#229971', alpine:'#FF87BC', racing_bulls:'#6692FF',
   audi:'#C8B820', haas:'#B6BABD', cadillac:'#CC0033',
 };
+// Official entry names that read badly in an email.
+const TEAM_NAMES = { 'RB F1 Team': 'Racing Bulls', 'Cadillac F1 Team': 'Cadillac', 'Haas F1 Team': 'Haas' };
+const teamName = n => TEAM_NAMES[n] || n || '';
 function normalizeTeam(name = '') {
   const k = name.toLowerCase().replace(/[\s-]+/g, '_').replace(/_f1_team$/, '');
+  if (k === 'rb') return 'racing_bulls';
   return TEAM_COLORS[k] ? k : (
     k.includes('mercedes') ? 'mercedes' : k.includes('ferrari') ? 'ferrari' :
     k.includes('mclaren') ? 'mclaren' : k.includes('red_bull') ? 'red_bull' :
@@ -56,7 +60,7 @@ const fmtDate = d => { try { return new Date(d).toLocaleDateString('en-GB', { we
 function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextRace, roster = {} }) {
   const FONT = "'Helvetica Neue',Helvetica,Arial,sans-serif";
   const COND = "'Barlow Condensed','Arial Narrow',Arial,sans-serif";
-  const predList = (prediction?.top10 || []).map(p => ({ pos: Number(p.pos), abbr: String(p.abbr || '').toUpperCase(), name: p.name, team: p.team, winProb: Number(p.winProb) || null }))
+  const predList = (prediction?.top10 || []).map(p => ({ pos: Number(p.pos), abbr: String(p.abbr || '').toUpperCase(), name: p.name, team: p.team, winProb: Math.round(Number(p.winProb)) || null }))
     .filter(p => p.abbr).sort((a, b) => a.pos - b.pos);
   const order = (grid || []).filter(g => g.abbr && g.pos).map(g => ({ pos: Number(g.pos), abbr: String(g.abbr).toUpperCase() })).sort((x, y) => x.pos - y.pos);
   const who = a => roster[a] || predList.find(p => p.abbr === a) || {};
@@ -96,7 +100,7 @@ function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextR
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#111113;border-radius:10px"><tr>
       <td style="padding:16px 18px">
         <div style="font:italic 800 40px/1 ${COND};text-transform:uppercase;color:#ffffff">${slash(winner)}${esc(surname(winner))}</div>
-        <div style="font:500 14px ${FONT};color:#b4b4b4;margin-top:6px">${esc(who(winner).team || '')}</div>
+        <div style="font:500 14px ${FONT};color:#b4b4b4;margin-top:6px">${esc(teamName(who(winner).team))}</div>
       </td>
       <td align="right" style="padding:16px 18px;font:500 13px ${FONT};color:#b4b4b4;vertical-align:top">${aiPick ? `The AI picked<br><b style="font:italic 800 22px ${COND};color:#ffffff">${esc(aiPick.abbr)}${aiPick.winProb ? ` ${aiPick.winProb}%` : ''}</b>` : ''}</td>
     </tr></table>`) : '';
@@ -125,7 +129,7 @@ function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextR
       ${order.slice(0, 10).map(g => `<tr>
         <td width="34" style="padding:7px 0;border-bottom:1px solid #222225;font:italic 800 17px ${COND};color:#ffffff">${g.pos}</td>
         <td style="padding:7px 0;border-bottom:1px solid #222225;font:600 14px ${FONT};color:#ffffff">${slash(g.abbr)}${esc(nameOf(g.abbr))}</td>
-        <td align="right" style="padding:7px 0;border-bottom:1px solid #222225;font:500 13px ${FONT};color:#949494">${esc(who(g.abbr).team || '')}</td>
+        <td align="right" style="padding:7px 0;border-bottom:1px solid #222225;font:500 13px ${FONT};color:#949494">${esc(teamName(who(g.abbr).team))}</td>
       </tr>`).join('')}
     </table>`) : '';
 
