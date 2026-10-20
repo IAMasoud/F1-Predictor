@@ -47,9 +47,12 @@ export default async function handler(req, res) {
         .send('[]');
     }
 
+    // Live feeds stay fresh; schedule-like data (meetings, sessions, drivers, stints, pit stops)
+    // barely changes, so Vercel's cache answers repeat visitors instead of OpenF1's free limit.
+    const live = /\/v1\/(position|intervals|race_control|car_data|location|team_radio|weather|laps)\b/.test(url);
     res.status(upstream.status)
       .setHeader('Content-Type', 'application/json')
-      .setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60')
+      .setHeader('Cache-Control', live ? 'public, s-maxage=30, stale-while-revalidate=60' : 'public, s-maxage=600, stale-while-revalidate=3600')
       .send(body);
   } catch (err) {
     res.status(502).json({ error: 'OpenF1 proxy error', details: err.message });
