@@ -36,8 +36,8 @@ const scrShort = n => String(n || '').replace(/ Grand Prix.*$/i, '').replace(/\s
 function scrRaces(){ return Object.values(SEASON_RACES || {}).sort((a, b) => a.round - b.round); }
 function scrRaceEnd(r){ return r?.date && r?.raceUTC ? Date.parse(`${r.date}T${r.raceUTC}:00Z`) + 2 * 3600e3 : r?.date ? Date.parse(`${r.date}T23:59:00Z`) : 0; }
 function scrAt(d, t){ return d && t ? Date.parse(`${d}T${t}:00Z`) : null; }
-function scrLocal(ms, o = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }){ return ms ? new Date(ms).toLocaleString(undefined, o) : '—'; }
-const scrTime = ms => scrLocal(ms, { hour: '2-digit', minute: '2-digit' });
+function scrLocal(ms, o = { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }){ return ms ? new Date(ms).toLocaleString(undefined, o) : '—'; }
+const scrTime = ms => scrLocal(ms, { hour: 'numeric', minute: '2-digit' });
 function scrAgo(ms){ const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
 const scrWin = v => (v == null || v === '' || isNaN(+v)) ? '—' : (+v < 1 ? '<1%' : `${Math.round(+v)}%`);
 
@@ -460,7 +460,7 @@ function scrSeasonRender(){
   if(leftGP){
     h += `<h2 class="scr-h">Still in the fight</h2><p class="scr-sub">${leftGP} race${leftGP === 1 ? '' : 's'}${leftSprint ? ` and ${leftSprint} sprint${leftSprint === 1 ? '' : 's'}` : ''} left, ${left} points to play for.${fight.length ? ` ${fight.length === 1 ? 'One driver' : fight.length + ' drivers'} can still catch ${esc(scrSurname(leader.abbr))}.` : ''}</p>`;
     h += fight.length ? `<div class="card" style="margin-top:10px;padding:2px 14px">${fight.map(d => { const gap = leader.pts - d.pts;
-        return `<div class="ss-fight"><div class="top"><i class="slash" style="background:${scrCol(d.abbr)}"></i><span class="code">${esc(d.abbr)}</span><span class="nm">${esc(scrSurname(d.abbr))} · ${d.pts} pts</span><span class="need">${gap} behind</span></div><div class="ss-track"><i style="width:${Math.min(100, gap / Math.max(1, left) * 100)}%"></i></div></div>`; }).join('')}</div>`
+        return `<div class="ss-fight"><div class="top"><i class="slash" style="background:${scrCol(d.abbr)}"></i><span class="code">${esc(d.abbr)}</span><span class="nm">${esc(scrSurname(d.abbr))} · ${d.pts} pts</span><span class="need">${gap} behind</span></div><div class="ss-track"><i style="width:${Math.min(100, gap / Math.max(1, left) * 100)}%"></i></div><div class="ss-cap">Needs ${Math.min(100, Math.round(gap / Math.max(1, left) * 100))}% of the points left</div></div>`; }).join('')}</div>`
       : `<div class="empty" style="margin-top:10px"><b>${esc(scrSurname(leader.abbr))} has won the title.</b><p>Nobody can catch the points lead any more.</p></div>`;
     const out = st.slice(1).find(d => leader.pts - d.pts > left);
     if(out && fight.length) h += `<p class="note">${esc(scrSurname(out.abbr))} and everyone below are out: more than ${left} points behind.</p>`;
@@ -643,8 +643,17 @@ async function scrPitsRender(){
   const el = $('vPits');
   if(!el) return;
   const race = loSelectedRace();
-  const sessKey = currentRaceSessKey, meetKey = currentMeetingKey;
+  let sessKey = currentRaceSessKey, meetKey = currentMeetingKey;
   const head = `<p class="scr-sub">${race ? esc(race.name) + ' · ' : ''}tyre strategy and stop times from the race.</p>`;
+  // Finished races load from the cloud copy, which skips OpenF1, so look the race session up here.
+  if(!sessKey && race && scrRaceEnd(race) < Date.now()){
+    el.innerHTML = head + '<p class="scr-sub" style="padding:16px 0">Loading the stops…</p>';
+    try{
+      const mtg = await getOf1Meeting(race);
+      const rs = mtg ? ((await getOf1Sessions(mtg.meeting_key)) || []).find(s => s.session_name === 'Race') : null;
+      if(rs){ sessKey = rs.session_key; meetKey = mtg.meeting_key; }
+    }catch(e){}
+  }
   if(!sessKey){
     el.innerHTML = head + `<div class="empty" style="margin-top:12px"><b>Pit stops appear after the race.</b><p>During the race, the Live screen shows how many times each car has stopped.</p></div>`;
     return;

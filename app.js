@@ -2347,8 +2347,14 @@ const of1Cache = {};
 let of1LiveLocked = false;   // true while OpenF1 is in live-session lockout mode
 let of1RateLimited = false;  // true if OpenF1 is rate-limiting us
 
-async function of1Fetch(url){
-  if(of1Cache[url]) return of1Cache[url];
+// Identical requests made while one is still in flight share it (several screens ask at once)
+const of1Pending = {};
+function of1Fetch(url){
+  if(of1Cache[url]) return Promise.resolve(of1Cache[url]);
+  if(!of1Pending[url]) of1Pending[url] = of1FetchOnce(url).finally(() => { delete of1Pending[url]; });
+  return of1Pending[url];
+}
+async function of1FetchOnce(url){
   // Use server-side proxy to avoid 429 rate-limits on mobile IPs
   const proxyUrl = OF1_PROXY + encodeURIComponent(url);
   let r, isLiveLock = false, isRateLimit = false;
@@ -3116,7 +3122,7 @@ async function autoFetchSessions(){
     }
 
     // Race result → auto-trigger AI vs Reality (+ live polling if race is happening now)
-    const raceSess = sessions.find(s=>s.session_name==='Race'||s.session_type==='Race');
+    const raceSess = sessions.find(s=>s.session_name==='Race') || sessions.find(s=>s.session_type==='Race' && !/sprint/i.test(s.session_name||''));
     if(raceSess && sessionLive(raceSess)){
       startLivePolling(raceSess.session_key, 'Race');
     } else if(raceSess && sessionDone(raceSess)){

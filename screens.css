@@ -156,6 +156,7 @@ body.light .tyre.H{border-color:#8a8a8a}
 .ss-fight .need{margin-left:auto;font:600 14px 'Barlow',sans-serif;color:var(--muted);white-space:nowrap}
 .ss-track{position:relative;height:8px;margin-top:9px;border-radius:4px;background:var(--sec);overflow:hidden}
 .ss-track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--muted)}
+.ss-cap{margin-top:6px;font:500 13px 'Barlow',sans-serif;color:var(--dim)}
 .ss-wins{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 .ss-wins div{padding:12px;border-radius:12px;background:var(--card)}
 .ss-wins b{display:block;font:italic 800 40px/1 'Barlow Condensed',sans-serif}
