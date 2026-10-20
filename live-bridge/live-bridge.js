@@ -51,10 +51,13 @@ const SUB_FEEDS    = [
   'SessionInfo',        // race name, session type, total laps
   'TrackStatus',        // green/yellow/red/SC flags
   'LapCount',           // current lap / total laps
+  'TimingAppData',      // tyre stints: compound and laps on the set
 ];
 
 // ─── State ──────────────────────────────────────────────────────────────
 const state = {
+  stints:   {},   // driverNumber → tyre stints from TimingAppData
+  trackStatus: null,
   drivers:  {},   // driverNumber → { tla, name, team }
   timing:   {},   // driverNumber → { position, lap, gap }
   session:  null, // { name, type, year, location, circuitId, round, totalLaps }
@@ -181,6 +184,17 @@ function mergeFeed(feedName, data) {
         lastPitLap,
       };
     });
+  } else if (feedName === 'TimingAppData') {
+    // Stints arrive as an array at first, then as {index: changes} updates.
+    const lines = data.Lines || data;
+    Object.entries(lines).forEach(([num, t]) => {
+      if (typeof t !== 'object' || !t.Stints) return;
+      const stints = state.stints[num] || (state.stints[num] = []);
+      const upd = Array.isArray(t.Stints) ? t.Stints.map((s, i) => [i, s]) : Object.entries(t.Stints).map(([i, s]) => [+i, s]);
+      upd.forEach(([i, s]) => { if (s && typeof s === 'object') stints[i] = { ...(stints[i] || {}), ...s }; });
+    });
+  } else if (feedName === 'TrackStatus') {
+    state.trackStatus = { status: String(data.Status || state.trackStatus?.status || ''), message: String(data.Message || state.trackStatus?.message || '') };
   } else if (feedName === 'SessionInfo') {
     const loc = data.Meeting?.Location || data.Meeting?.Country?.Name || '';
     const circuitId = LOC_TO_CIRCUIT[loc] || loc.toLowerCase().replace(/[\s'’`]+/g, '_');
@@ -252,12 +266,15 @@ async function flushToSupabase() {
     return;
   }
   // Build grid array sorted by position
+  const TYRE = { SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W' };
   const grid = Object.entries(state.timing)
     .map(([num, t]) => ({
       pos: t.position,
       abbr: state.drivers[num]?.tla || '',
       lap: t.lap,
       gap: t.gap,
+      tyre: TYRE[String((state.stints[num] || []).filter(Boolean).slice(-1)[0]?.Compound || '').toUpperCase()] || null,
+      tyreAge: (state.stints[num] || []).filter(Boolean).slice(-1)[0]?.TotalLaps ?? null,
       retired: t.retired,
       inPit: t.inPit,
       pitCount: t.pitCount || 0,
@@ -293,7 +310,9 @@ async function flushToSupabase() {
     grid_data:    grid.map(g => ({
       pos: g.pos, abbr: g.abbr,
       lap: g.lap, inPit: g.inPit, pitCount: g.pitCount, lastPitLap: g.lastPitLap,
+      gap: g.gap || null, tyre: g.tyre, tyreAge: g.tyreAge,
       totalLaps: state.session.totalLaps || null,
+      flag: state.trackStatus?.message || null,
     })),
     source:       'f1-signalr-live',
     fetched_at:   new Date().toISOString(),

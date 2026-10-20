@@ -4,12 +4,14 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v68';
+const CACHE = 'f1-predictor-v70';
 const STATIC = [
   '/',
   '/index.html',
   '/app.css',
   '/app.js',
+  '/screens.css',
+  '/screens.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-96.png',

@@ -219,6 +219,7 @@ function initSeason(){
       document.querySelectorAll('[data-season]').forEach(el => { el.textContent = SEASON; });
       document.title = `F1 AI Race Predictor ${SEASON}`;
       if(source !== 'jolpica') console.warn('[season] official schedule unavailable — using the built-in calendar');
+      window.scrOnData?.();
     }catch(e){ console.warn('[season] using the built-in calendar:', e.message); }
   })();
   return _seasonReady;
@@ -395,7 +396,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.68';
+const APP_VERSION = 'BETA 1.70';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -770,6 +771,7 @@ async function fetchLiveData(){
     setProgress(100);
     // Auto-match stored predictions with actual results now that we have live race data
     checkStoredPredictions();
+    window.scrOnData?.();
 
     const lastRace = completedRaces.filter(r=>!String(r.round).endsWith('S')).slice(-1)[0]?.raceName||'—';
     setStatus(gotLive
@@ -1736,6 +1738,8 @@ Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track 
       </div>`;
 
     $('midRaceStatus').innerHTML = `<span style="color:#3fc07a">✓ Live prediction generated · Lap ${curLap}/${totalLaps}</span>`;
+    window._lastLiveAI = { circuitId: race.circuitId, top: parsed.top10[0], top10: parsed.top10, confidence: parsed.confidence || null, lap: curLap, totalLaps, at: Date.now() };
+    window.scrOnLiveAI?.();
     showToast(`🔄 New prediction made — based on current positions (Lap ${curLap}${totalLaps?'/'+totalLaps:''})`, 'success', 4500);
   } catch(e) {
     console.error('Mid-race prediction error:', e);
@@ -3307,7 +3311,8 @@ async function openArchTab(){
   // Default to current stage on first open
   const current = getCurrentStage(race);
   if(!_archState.stage || !stagesForRace(race).includes(_archState.stage)){
-    _archState.stage = current;
+    // After the race there is no 'final' stage to show: open on the last pre-race one.
+    _archState.stage = stagesForRace(race).includes(current) ? current : stagesForRace(race).slice(-1)[0];
   }
   // Default to Race on type switch
   if(!_archState.type) _archState.type = 'race';
@@ -3787,6 +3792,10 @@ async function fetchWeatherForecast(circuitId, raceDate){
       </div>`;
     });
     updateWeatherAlert();
+    window._wxDays = d.time.map((date, i) => ({ date, raceDate: rdStr, race: date === rdStr,
+      dow: dayNames[new Date(date + 'T12:00:00').getDay()], hi: Math.round(d.temperature_2m_max[i]), lo: Math.round(d.temperature_2m_min[i]),
+      rain: d.precipitation_probability_max[i] || 0, code: d.weathercode[i] })).slice(-3);
+    window.scrOnWeather?.();
 
     htm('wxDays', html);
     $('wxSrc').textContent = 'OpenMeteo · 5-day forecast';

@@ -42,7 +42,7 @@
   .field{width:100%;height:44px;margin-top:14px;padding:0 14px;border-radius:10px;border:1px solid var(--outline);background:var(--ground)}
   .code{letter-spacing:8px;font:700 22px 'Barlow';text-align:center}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--outline);background:none;font:600 13px 'Barlow';white-space:nowrap}
-  .btn.red{background:var(--lamp);border-color:var(--lamp);color:#fff;font:700 15px 'Barlow Condensed';letter-spacing:.4px;text-transform:uppercase}
+  .btn.red{background:#e01e1e;border-color:#e01e1e;color:#fff;font:700 15px 'Barlow Condensed';letter-spacing:.4px;text-transform:uppercase}
   .btn.block{display:flex;width:100%;height:44px;margin-top:12px}
   .msg{margin-top:10px;min-height:20px;color:var(--ink-3)}.msg.err{color:var(--loss)}
 
@@ -77,7 +77,7 @@
   .kpis span{font:500 13px 'Barlow';color:var(--ink-3)}.kpis b{display:block;font:italic 800 34px/1 'Barlow Condensed';margin-top:8px}
   .kpis small{display:block;margin-top:6px;font:500 12px 'Barlow';color:var(--ink-3)}
   .tr{display:flex;align-items:center;gap:10px;min-height:32px;font:500 14px 'Barlow'}
-  .tr .k{width:120px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tr .k{width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tr .b{flex:1;height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden}.tr .b i{display:block;height:100%;background:var(--ink-2)}
   .tr .v{width:52px;text-align:right;color:var(--ink-2)}
   table{width:100%;border-collapse:collapse;font:500 14px 'Barlow'}
@@ -166,7 +166,7 @@
 /* Pit Wall — the F1 Predictor admin page. Talks to /api/admin with a Supabase sign-in token. */
 const SB_URL = 'https://zeqxzyisqwemqsvspbyj.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcXh6eWlzcXdlbXFzdnNwYnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODM0MjUsImV4cCI6MjA5MzU1OTQyNX0.uDzYrylvgomvGiSH886LJ2zIO14VZpR-f12vWRzW2M0';
-const HOME_PAGE = 'weekend';   // first page after signing in
+const HOME_PAGE = 'overview';  // first page after signing in
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => (n == null ? '—' : Number(n).toLocaleString());
@@ -245,7 +245,7 @@ const ICON = {
   ai:'<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
   subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
 };
-const PAGES = [['weekend','This weekend'],['overview','Audience'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email']];
+const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email']];
 function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
 function lineChart(points, { h = 260 } = {}){
   const w = 640, L = 34, B = 22, T = 10;
@@ -286,6 +286,19 @@ function dueAt(stage, race){
   const open = Date.parse(race.date + 'T00:00:00Z') - 3 * 864e5;
   return ({ beforeQuali: open, beforeSprintQ: open, afterSprintQ: t('Sprint quali') + 45 * 6e4, afterSprint: t('Sprint') + 60 * 6e4, afterQuali: t('Quali') + 60 * 6e4 })[stage] ?? open;
 }
+/* What needs the admin right now: calls that are due but missing or baseline, an unsent race report, failing jobs. */
+function needsFrom(w, jobs){
+  const out = [];
+  const nx = w?.next, ls = w?.last;
+  (nx?.calls || []).forEach(c => {
+    if(Date.now() < dueAt(c.stage, nx)) return;
+    if(c.id == null) out.push({ lamp:'off', text:`${esc(nx.name.replace(' Grand Prix',''))} · ${STAGE[c.stage].toLowerCase()}: no call yet`, act:'<button class="btn" data-run="predictions">Make it now</button>' });
+    else if(!c.ai && !c.hidden) out.push({ lamp:'on', text:`${esc(nx.name.replace(' Grand Prix',''))} · ${STAGE[c.stage].toLowerCase()} is a baseline`, act:'<button class="btn" data-run="predictions">Retry the AI</button>' });
+  });
+  if(ls && !ls.newsletter) out.push({ lamp:'off', text:`Race report for ${esc(ls.name.replace(' Grand Prix',''))} not sent from here`, act:`<button class="btn" data-mail="${esc(ls.circuitId)}">Preview</button>` });
+  (jobs || []).filter(j => j.failed_7d).forEach(j => out.push({ lamp:'on', text:`${esc(j.jobname)} failed ${j.failed_7d} time${j.failed_7d === 1 ? '' : 's'} this week`, act:'' }));
+  return out;
+}
 function callRow(c, race, past){
   const due = dueAt(c.stage, race), ready = Date.now() >= due;
   const tag = c.id == null ? `<span class="tag none">${past ? 'Never made' : ready ? 'Not made yet' : 'Not due yet'}</span>`
@@ -323,11 +336,8 @@ const RENDER = {
     const short = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday:'short', hour:'2-digit', minute:'2-digit' }) : '—';
     const lamps = r => `<div class="lamps">${r.sessions.map(s => `<div class="${s.start && Date.parse(s.start) + 3600e3 < now ? 'on' : ''}"><i></i><b>${esc(s.name)}</b><small>${short(s.start)}</small></div>`).join('')}</div>`;
     const days = r => Math.ceil((Date.parse(r.sessions.at(-1).start || r.date) - now) / 864e5);
-    let needs = 0;
     const nx = w.next, ls = w.last;
-    if(nx) needs += nx.calls.filter(c => Date.now() >= dueAt(c.stage, nx) && (c.id == null || (!c.ai && !c.hidden))).length;
-    if(ls && !ls.newsletter) needs++;
-    cache.needs = needs; nav();
+    cache.needs = needsFrom(w).length; nav();
     main.innerHTML = `
       <div class="top"><h1>This weekend</h1><span class="note">Times in your timezone</span></div>
       <div class="grid g2">
@@ -353,11 +363,16 @@ const RENDER = {
     const list = (k, n = 8) => (top[k] || []).slice(0, n);
     const ev = Object.fromEntries((top.events || []).map(e => [e.key, e.value]));
     const ai = o.ai || {};
+    const needs = needsFrom(o.weekend, o.jobs);
+    cache.needs = needs.length; nav();
+    const JOBN = { 'auto-results':'Scoring (every 2 h)', 'supabase-sync':'Session sync (30 min)', 'retry-predictions':'AI calls (hourly)', 'rollup-analytics':'Daily totals (nightly)' };
+    const lastCircuit = o.weekend?.last?.circuitId || '';
     main.innerHTML = `
-      <div class="top"><h1>Audience</h1>
+      <div class="top"><h1>Overview</h1>
         <select class="pill" id="range" aria-label="Date range">${[7,30,90].map(d => `<option value="${d}" ${d === range ? 'selected' : ''}>Last ${d} days</option>`).join('')}</select>
         <span class="pill"><i></i>${fmt(t.live_now)} on the site now</span>
-        <span class="note" style="margin-left:auto">Counted without cookies · visitors who ask not to be tracked are left out</span></div>
+        <span class="note" style="margin-left:auto">Counted without cookies · visitors who ask not to be tracked are left out</span>
+        <button class="btn red" data-mail="${esc(lastCircuit)}">Send race report</button></div>
       <div class="kpis">
         <div><span>Visitors</span><b>${fmt(t.visitors)}</b><small>${delta == null ? 'No earlier period yet' : `${delta >= 0 ? '+' : ''}${delta}% on the previous ${range} days`}</small></div>
         <div><span>Page views</span><b>${fmt(t.views)}</b><small>${t.visitors ? (t.views / t.visitors).toFixed(1) + ' per visitor' : '—'}</small></div>
@@ -370,6 +385,17 @@ const RENDER = {
         <section class="panel"><h2>Visitors per day <span>Red dots are Sundays</span></h2>${pts.length ? lineChart(pts) : '<div class="empty">No visits recorded yet</div>'}</section>
         <section class="panel"><h2>Countries <span>Visitors</span></h2>${bars(list('countries').map(x => ({ ...x, label: regionName(x.key) })))}</section>
         <section class="panel"><h2>Screens <span>Views</span></h2>${bars(list('screens', 7).map(x => ({ ...x, label: SCREEN[x.key] || x.key })))}</section>
+      </div>
+      <div class="grid g3e">
+        <section class="panel"><h2>Needs you <span>${needs.length ? `${needs.length} thing${needs.length === 1 ? '' : 's'}` : 'All clear'}</span></h2>
+          ${needs.length ? needs.map(n => `<div class="call"><div class="what" style="display:flex;align-items:center;gap:10px"><span class="dot ${n.lamp === 'on' ? 'bad' : 'off'}"></span><span>${n.text}</span></div><span class="acts">${n.act}</span></div>`).join('') : '<div class="empty">Nothing waiting. Calls, emails and jobs are up to date.</div>'}</section>
+        <section class="panel"><h2>Scheduled jobs <span>Last 7 days</span></h2>
+          ${(o.jobs || []).map(j => `<div class="tr"><span class="dot ${j.failed_7d ? 'bad' : j.last_status ? '' : 'off'}"></span><span>${JOBN[j.jobname] || esc(j.jobname)}</span><span class="note" style="margin-left:auto">${j.runs_7d} runs · ${j.last_start ? ago(j.last_start) : 'not run yet'}</span></div>`).join('')}</section>
+        <section class="panel"><h2>The AI <span>This season</span></h2>
+          <div class="tr"><span class="k">Predictions saved</span><span class="b"><i style="width:100%"></i></span><span class="v">${fmt(o.predictions?.total)}</span></div>
+          <div class="tr"><span class="k">Baselines (AI busy)</span><span class="b"><i style="width:${o.predictions?.total ? o.predictions.baselines / o.predictions.total * 100 : 0}%;background:var(--lamp)"></i></span><span class="v">${fmt(o.predictions?.baselines)}</span></div>
+          <div class="tr"><span class="k">Winner called</span><span class="b"><i style="width:${ai.aiRaces ? ai.winners / ai.aiRaces * 100 : 0}%"></i></span><span class="v">${ai.aiRaces ? `${ai.winners}/${ai.aiRaces}` : '—'}</span></div>
+          <div class="tr"><span class="k">Podium places right</span><span class="b"><i style="width:${ai.podiumTotal ? ai.podium / ai.podiumTotal * 100 : 0}%"></i></span><span class="v">${ai.podiumTotal ? `${ai.podium}/${ai.podiumTotal}` : '—'}</span></div></section>
       </div>
       <div class="grid g3e">
         <section class="panel"><h2>Devices</h2>${bars(list('devices').map(x => ({ ...x, label: x.key[0].toUpperCase() + x.key.slice(1) })))}<h2 style="margin-top:12px">Systems</h2>${bars(list('os', 5))}</section>
@@ -385,6 +411,7 @@ const RENDER = {
         </section>
       </div>`;
     $('range').onchange = e => { range = +e.target.value; go('overview'); };
+    wireActions(main, () => go('overview'));
   },
 
   async predictions(main){
@@ -477,7 +504,8 @@ async function previewMail(circuit){
   }catch(e){ body.innerHTML = `<p>${esc(e.message)}</p><div style="text-align:right;margin-top:12px"><button class="btn" onclick="document.getElementById('dlg').close()">Close</button></div>`; }
 }
 
-const SCREEN = { pred:'Predict', comp:'Reality', live:'Live', arch:'Predictions archive', hist:'Season', cal:'Calendar', anlt:'Analytics', pits:'Pit stops' };
+const SCREEN = { pred:'Predict', comp:'Reality', live:'Live', arch:'Predictions archive', hist:'Season', cal:'Calendar', anlt:'Analytics', pits:'Pit stops', more:'More',
+  'pred-order':'Predict · order', 'pred-weekend':'Predict · weekend', 'pred-analysis':'Predict · analysis', 'pred-alerts':'Predict · alerts' };
 const regionNames = (() => { try{ return new Intl.DisplayNames(undefined, { type:'region' }); }catch{ return null; } })();
 const regionName = code => { try{ return code && code !== '?' ? (regionNames?.of(code) || code) : 'Unknown'; }catch{ return code; } };
 

@@ -935,7 +935,7 @@
     select{font-family:'Barlow';font-weight:500;background:var(--card);border-color:var(--border2)}
 
     /* buttons that start the AI */
-    .predict-btn,.predict-btn:hover{background:var(--red)!important;color:#fff!important;border:none!important;box-shadow:none!important;font:700 17px 'Barlow Condensed';letter-spacing:.5px;text-transform:uppercase;border-radius:10px}
+    .predict-btn,.predict-btn:hover{background:#e01e1e!important;color:#fff!important;border:none!important;box-shadow:none!important;font:700 17px 'Barlow Condensed';letter-spacing:.5px;text-transform:uppercase;border-radius:10px}
     .predict-btn:hover{filter:brightness(1.08)}
     .sprint-btn{box-shadow:none!important}
     .tab{font-family:'Barlow';font-weight:600;letter-spacing:.2px;text-transform:none;font-size:14px}
@@ -988,7 +988,7 @@
     .lo-empty{margin-top:14px;padding:16px;border-radius:12px;background:var(--card)}
     .lo-empty p{font:500 16px/1.4 'Barlow';color:var(--text)}
     .lo-empty p small{display:block;margin-top:4px;font-size:14px;color:var(--muted)}
-    .lo-empty button{margin-top:12px;height:44px;padding:0 18px;border:0;border-radius:10px;background:var(--red);color:#fff;font:700 16px 'Barlow Condensed';letter-spacing:.5px;text-transform:uppercase;cursor:pointer}
+    .lo-empty button{margin-top:12px;height:44px;padding:0 18px;border:0;border-radius:10px;background:#e01e1e;color:#fff;font:700 16px 'Barlow Condensed';letter-spacing:.5px;text-transform:uppercase;cursor:pointer}
 
     .lo-tower{margin-top:12px}
     .lo-th,.lo-row{display:grid;grid-template-columns:36px 1fr 52px 56px;align-items:center}
