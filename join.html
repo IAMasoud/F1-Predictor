@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Join the team · F1 Predictor</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,700;1,800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /*
+   * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+   * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
+   */
+  :root{ --ground:#070708; --panel:#111113; --panel-2:#19191c; --line:#222225; --outline:#3a3a3e;
+    --ink:#fff; --ink-2:#b4b4b4; --ink-3:#949494; --lamp:#ff2a2a; --red:#e01e1e; --gain:#3fc07a; --loss:#ff6464; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--ground);color:var(--ink);font:400 15px/1.5 'Barlow',system-ui,sans-serif}
+  ::selection{background:var(--lamp);color:#fff}
+  :focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1)}
+  button:active:not(:disabled){transform:scale(.97)}
+  button:disabled{opacity:.55;cursor:default}
+  a{color:inherit}
+  .wrap{max-width:640px;margin:0 auto;padding:28px 16px 64px}
+  .brand{display:flex;align-items:center;gap:10px;font:700 13px 'Barlow';letter-spacing:3px}
+  h1{font:italic 800 40px/1 'Barlow Condensed',sans-serif;text-transform:uppercase;margin-top:26px}
+  .lead{margin-top:10px;color:var(--ink-2);font-size:16px}
+  .lead b{color:var(--ink);font-weight:600}
+  .card{background:var(--panel);border-radius:14px;padding:18px 16px 20px;margin-top:16px}
+  .card h2{font:italic 800 21px/1 'Barlow Condensed',sans-serif;text-transform:uppercase;display:flex;align-items:baseline;gap:10px}
+  .card h2 small{font:500 13px 'Barlow';text-transform:none;color:var(--ink-3)}
+  .card p.hint{margin-top:6px;color:var(--ink-3);font-size:13.5px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  .grid .full{grid-column:1/3}
+  label{display:block;margin-top:14px;font:500 13.5px 'Barlow';color:var(--ink-2)}
+  label .req{margin-left:6px;font:700 10.5px 'Barlow';letter-spacing:.06em;text-transform:uppercase;color:var(--lamp)}
+  .field{display:block;width:100%;height:46px;margin-top:6px;padding:0 14px;border-radius:10px;border:1px solid var(--outline);background:var(--ground)}
+  textarea.field{height:auto;min-height:96px;padding:12px 14px;resize:vertical;line-height:1.45}
+  select.field{appearance:none;background:var(--ground) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23949494' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 14px center}
+  input[type=date].field{color-scheme:dark}
+  .field.bad{border-color:var(--loss)}
+  .pw{position:relative}.pw .field{padding-right:70px}
+  .eye{position:absolute;right:6px;top:calc(50% + 3px);transform:translateY(-50%);height:34px;padding:0 10px;border:0;border-radius:8px;background:none;color:var(--ink-2);font:600 12.5px 'Barlow'}
+  .file{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px;border:1px dashed var(--outline);border-radius:10px}
+  .file input{position:absolute;width:1px;height:1px;opacity:0}
+  .file .btn{flex-shrink:0}
+  .file span{color:var(--ink-3);font-size:14px;overflow-wrap:anywhere}
+  .btn{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border-radius:9px;border:1px solid var(--outline);background:none;font:600 14px 'Barlow'}
+  .btn.red{background:var(--red);border-color:var(--red);color:#fff;font:700 16px 'Barlow Condensed';letter-spacing:.5px;text-transform:uppercase;height:50px;width:100%;margin-top:18px}
+  .note{margin-top:14px;color:var(--ink-3);font-size:13px;line-height:1.5}
+  .msg{margin-top:12px;min-height:20px;font-weight:500}.msg.err{color:var(--loss)}.msg.ok{color:var(--gain)}
+  .state{text-align:left}
+  .state p{margin-top:10px;color:var(--ink-2)}
+  @media (max-width:520px){ h1{font-size:34px} .grid{grid-template-columns:1fr}.grid .full{grid-column:auto} }
+  @media (prefers-reduced-motion:reduce){button:active:not(:disabled){transform:none}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg>F1 PREDICTOR</div>
+
+  <section id="loading" class="state"><h1>Join the team</h1><p class="lead">Checking your invite…</p></section>
+
+  <section id="problem" class="state" hidden><h1>Can’t use this link</h1><p class="lead" id="problemText"></p>
+    <p class="note">If you think this is a mistake, ask the person who sent you the link for a new one.</p></section>
+
+  <section id="done" class="state" hidden><h1>Thank you</h1><p class="lead" id="doneText"></p>
+    <p class="note">If you’re accepted, you’ll sign in to Pit Wall, the team dashboard, at f1-predictor-theta.vercel.app/admin with the email and password you just chose.</p></section>
+
+  <section id="apply" hidden>
+    <h1>Join the team</h1>
+    <p class="lead"><b>Ahmed Masoud</b> invited you to join F1 Predictor as <b id="roleName"></b>. Fill in your details and he’ll get back to you by email.</p>
+    <p class="note">Only your name, date of birth, email and password are needed. Everything else is optional, but helps.</p>
+
+    <form id="form" novalidate>
+      <div class="card"><h2>About you</h2>
+        <div class="grid">
+          <label class="full" for="full_name">Full name<span class="req">Required</span><input class="field" id="full_name" autocomplete="name" maxlength="80" required></label>
+          <label for="date_of_birth">Date of birth<span class="req">Required</span><input class="field" id="date_of_birth" type="date" min="1926-01-01" required></label>
+          <label for="phone">Phone or WhatsApp<input class="field" id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="30"></label>
+          <label class="full" for="location">Where you live<input class="field" id="location" autocomplete="address-level2" maxlength="80" placeholder="City, country"></label>
+        </div>
+      </div>
+
+      <div class="card"><h2>Your sign-in <small>for Pit Wall, if you’re accepted</small></h2>
+        <div class="grid">
+          <label class="full" for="email">Email<span class="req">Required</span><input class="field" id="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required></label>
+          <label for="password">Password<span class="req">Required</span><span class="pw" style="display:block"><input class="field" id="password" type="password" autocomplete="new-password" minlength="10" maxlength="72" required><button class="eye" type="button" id="eye" aria-label="Show password">Show</button></span></label>
+          <label for="password2">Type it again<span class="req">Required</span><input class="field" id="password2" type="password" autocomplete="new-password" minlength="10" maxlength="72" required></label>
+        </div>
+        <p class="hint">At least 10 characters. You’ll only be able to sign in once you’re accepted.</p>
+      </div>
+
+      <div class="card"><h2>Education <small>optional</small></h2>
+        <div class="grid">
+          <label for="education_level">Level<select class="field" id="education_level"><option value="">Choose…</option><option>Secondary school</option><option>Diploma</option><option>Bachelor's</option><option>Master's</option><option>PhD</option><option>Other</option></select></label>
+          <label for="graduation_year">Graduation year<input class="field" id="graduation_year" type="number" inputmode="numeric" min="1950" max="2045" placeholder="e.g. 2027"></label>
+          <label for="school">School or university<input class="field" id="school" maxlength="120"></label>
+          <label for="major">Major<input class="field" id="major" maxlength="120" placeholder="e.g. Computer science"></label>
+        </div>
+      </div>
+
+      <div class="card"><h2>Work and skills <small>optional</small></h2>
+        <div class="grid">
+          <label class="full" for="occupation">What you do now<input class="field" id="occupation" maxlength="120" placeholder="Student, job title…"></label>
+          <label class="full" for="skills">Skills<textarea class="field" id="skills" maxlength="600" placeholder="e.g. writing, design, data analysis, video editing, coding"></textarea></label>
+          <label for="languages">Languages<input class="field" id="languages" maxlength="200" placeholder="e.g. Arabic, English"></label>
+          <label for="hours_per_week">Hours you can give each week<input class="field" id="hours_per_week" type="number" inputmode="numeric" min="0" max="80"></label>
+        </div>
+      </div>
+
+      <div class="card"><h2>More about you <small>optional</small></h2>
+        <div class="grid">
+          <label class="full" for="interests">Interests<textarea class="field" id="interests" maxlength="600" placeholder="Favourite team or driver, other interests…"></textarea></label>
+          <label for="linkedin">LinkedIn<input class="field" id="linkedin" type="url" inputmode="url" maxlength="200" placeholder="linkedin.com/in/…"></label>
+          <label for="website">Website or portfolio<input class="field" id="website" type="url" inputmode="url" maxlength="200"></label>
+          <label class="full" for="about">Why do you want to join?<textarea class="field" id="about" maxlength="3000"></textarea></label>
+        </div>
+      </div>
+
+      <div class="card"><h2>CV <small>optional</small></h2>
+        <label class="file" for="cv"><input id="cv" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span class="btn">Choose a file</span><span id="cvName">PDF or Word, up to 10 MB</span></label>
+      </div>
+
+      <button class="btn red" type="submit" id="send">Send my application</button>
+      <div class="msg" id="msg" role="status" aria-live="polite"></div>
+      <p class="note">Only Ahmed and the F1 Predictor team see these details. They’re used to review your application, and the CV stays private.</p>
+    </form>
+  </section>
+</main>
+
+<script>
+/* The page behind an invite link (/join#t=…). Talks to the "join" Supabase function. */
+const API = 'https://zeqxzyisqwemqsvspbyj.supabase.co/functions/v1/join';
+const MAX_CV = 10 * 1024 * 1024;
+const CV_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+const show = id => ['loading', 'problem', 'done', 'apply'].forEach(k => { $(k).hidden = k !== id; });
+const msg = (text, kind = '') => { const m = $('msg'); m.className = `msg ${kind}`; m.textContent = text || ''; };
+
+async function call(action, body){
+  const r = await fetch(`${API}?action=${action}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token, ...body }) });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok){ const e = new Error(j.error || 'Something went wrong. Try again in a minute.'); e.status = r.status; e.field = j.field; throw e; }
+  return j;
+}
+
+// Date of birth: nobody under 13.
+const max = new Date(); max.setFullYear(max.getFullYear() - 13); $('date_of_birth').max = max.toISOString().slice(0, 10);
+
+$('eye').onclick = () => { const show = $('password').type === 'password';
+  $('password').type = $('password2').type = show ? 'text' : 'password'; $('eye').textContent = show ? 'Hide' : 'Show'; $('eye').setAttribute('aria-label', show ? 'Hide password' : 'Show password'); };
+
+let uploaded = null; // { file, path } so a retry doesn't upload the same CV twice
+$('cv').onchange = () => {
+  const f = $('cv').files[0];
+  uploaded = null;
+  if(!f){ $('cvName').textContent = 'PDF or Word, up to 10 MB'; return; }
+  const bad = !CV_TYPES.includes(f.type) && !/\.(pdf|docx?)$/i.test(f.name) ? 'That isn’t a PDF or Word file.' : f.size > MAX_CV ? 'That file is bigger than 10 MB.' : '';
+  if(bad){ $('cv').value = ''; $('cvName').textContent = 'PDF or Word, up to 10 MB'; msg(bad, 'err'); return; }
+  $('cvName').textContent = `${f.name} · ${f.size < 1048576 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`}`; msg('');
+};
+const typeOf = f => CV_TYPES.includes(f.type) ? f.type : /\.pdf$/i.test(f.name) ? CV_TYPES[0] : /\.doc$/i.test(f.name) ? CV_TYPES[1] : CV_TYPES[2];
+
+function fail(text, field){
+  msg(text, 'err');
+  document.querySelectorAll('.field.bad').forEach(x => x.classList.remove('bad'));
+  const el = field && $(field === 'cv' ? 'cv' : field);
+  if(el && el.type !== 'file'){ el.classList.add('bad'); el.focus(); }
+}
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  const v = id => $(id).value.trim();
+  const data = {};
+  ['full_name','date_of_birth','phone','location','email','education_level','graduation_year','school','major','occupation','skills','languages','hours_per_week','interests','linkedin','website','about'].forEach(k => { data[k] = v(k); });
+  data.password = $('password').value;
+  if(data.full_name.length < 2) return fail('Enter your full name.', 'full_name');
+  if(!data.date_of_birth) return fail('Enter your date of birth.', 'date_of_birth');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(data.email)) return fail('Enter a valid email address.', 'email');
+  if(data.password.length < 10) return fail('The password needs at least 10 characters.', 'password');
+  if(data.password !== $('password2').value) return fail('The two passwords are different.', 'password2');
+
+  const btn = $('send'); btn.disabled = true;
+  try{
+    const f = $('cv').files[0];
+    if(f && (!uploaded || uploaded.file !== f)){
+      msg('Uploading your CV…');
+      const slot = await call('upload', { name: f.name, type: typeOf(f), size: f.size });
+      const form = new FormData(); form.append('cacheControl', '3600'); form.append('', f);
+      const up = await fetch(slot.uploadUrl, { method:'PUT', body: form, headers:{ 'x-upsert':'false' } });
+      if(!up.ok) throw Object.assign(new Error('Your CV didn’t upload. Try again, or send without it.'), { field:'cv' });
+      uploaded = { file: f, path: slot.path };
+    }
+    if(uploaded){ data.cv_path = uploaded.path; data.cv_name = f.name; }
+    msg('Sending…');
+    const r = await call('apply', data);
+    $('doneText').textContent = `Thanks, ${r.first_name}. Your application is with Ahmed. You’ll get an email at ${data.email} once he has looked at it.`;
+    show('done'); window.scrollTo({ top: 0 });
+  }catch(err){
+    if(err.status === 410 || err.status === 404){ $('problemText').textContent = err.message; show('problem'); return; }
+    fail(err.message, err.field);
+  }finally{ btn.disabled = false; }
+};
+
+(async () => {
+  if(!token){ $('problemText').textContent = 'This invite link is not complete. Open the whole link you were sent.'; show('problem'); return; }
+  try{
+    const r = await call('check', {});
+    $('roleName').textContent = r.role;
+    show('apply');
+  }catch(err){ $('problemText').textContent = err.message; show('problem'); }
+})();
+</script>
+</body>
+</html>

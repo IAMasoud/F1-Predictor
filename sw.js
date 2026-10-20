@@ -4,7 +4,7 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v70';
+const CACHE = 'f1-predictor-v71';
 const STATIC = [
   '/',
   '/index.html',
@@ -43,7 +43,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (!(sameOrigin || isFont) || (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')))) return;
+  if (!(sameOrigin || isFont) || (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/join')))) return;
 
   // Page loads: the latest app from the network (so a deploy shows on the first open),
   // the cached copy when offline or the network takes longer than 4 seconds.

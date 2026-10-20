@@ -6,6 +6,7 @@
 // The Pit Wall admin API. Every request needs a Supabase sign-in token for an admin account
 // (app_metadata.role "admin", or the owner); data is read and written with the server key.
 // Only the owner can add or remove admins and change where the weekly report is delivered.
+import { randomBytes } from 'node:crypto';
 import { isAllowedOrigin, clientIp, rateLimited, sb } from './_guard.js';
 import { loadSeason, sessionEndMs } from '../season.js';
 
@@ -13,6 +14,8 @@ export const config = { maxDuration: 60 };
 
 const OWNER_EMAIL = (process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com').toLowerCase();
 const OWNER_DEFAULTS = { name: 'Ahmed Masoud', title: 'Founder & CEO' };
+const SITE = 'https://f1-predictor-theta.vercel.app';
+const INVITE_DAYS = 14;
 const STAGE_ORDER = ['afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
 const tokens = new Map(); // token → { me, until }
 
@@ -185,6 +188,63 @@ function deliveryStatus(s) {
   };
 }
 
+/* Team invites and applications (owner only). */
+const inviteState = i => i.revoked ? 'cancelled' : i.used_at ? 'used' : Date.parse(i.expires_at) < Date.now() ? 'expired' : 'waiting';
+const escHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* The answer email, written as a letter from the owner. */
+function decisionEmail({ accepted, name, role, note }) {
+  const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+  const body = accepted
+    ? [`Congrats, and welcome to the team!`,
+       `I'm really happy to tell you that you've been accepted to join F1 Predictor as ${role}.`,
+       `You can sign in to Pit Wall, our team dashboard, with the email and password you chose when you applied.`]
+    : [`Thank you for applying to join F1 Predictor as ${role}, and for the time you put into your application.`,
+       `I'm really sorry, but we couldn't accept you this time.`,
+       `I wish you all the best, and I hope our paths cross again.`];
+  const extra = String(note || '').trim().slice(0, 1500);
+  const P = t => `<p style="margin:0 0 14px;color:#d6d6d6;font:400 15px/1.6 Arial,Helvetica,sans-serif">${escHtml(t).replace(/\n/g, '<br>')}</p>`;
+  const html = `<div style="background:#070708;padding:28px 12px">
+  <div style="max-width:520px;margin:0 auto;background:#111113;border-radius:12px;padding:28px 26px">
+    <div style="font:700 12px Arial,Helvetica,sans-serif;letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; F1 PREDICTOR</div>
+    <h1 style="margin:22px 0 16px;font:italic 800 28px/1.1 'Arial Narrow',Arial,sans-serif;text-transform:uppercase;color:#ffffff">${accepted ? 'Welcome to the team' : 'Thank you for applying'}</h1>
+    ${P(`Hi ${first},`)}${body.map(P).join('')}${extra ? P(extra) : ''}
+    ${accepted ? `<a href="${SITE}/admin" style="display:inline-block;margin:4px 0 18px;background:#e01e1e;color:#ffffff;text-decoration:none;font:700 14px Arial,Helvetica,sans-serif;letter-spacing:.5px;text-transform:uppercase;padding:12px 22px;border-radius:8px">Sign in to Pit Wall</a>` : ''}
+    <p style="margin:8px 0 0;color:#ffffff;font:700 15px Arial,Helvetica,sans-serif">Ahmed Masoud</p>
+    <p style="margin:2px 0 0;color:#949494;font:400 13px Arial,Helvetica,sans-serif">Founder &amp; CEO, F1 Predictor</p>
+  </div></div>`;
+  const text = [`Hi ${first},`, ...body, ...(extra ? [extra] : []), ...(accepted ? [`Sign in: ${SITE}/admin`] : [])].join('\n\n') + '\n\nAhmed Masoud\nFounder & CEO, F1 Predictor';
+  return { subject: accepted ? `Welcome to the F1 Predictor team, ${first}` : 'Your F1 Predictor application', html, text };
+}
+async function sendMail({ to, subject, html, text }) {
+  const key = process.env.BREVO_API_KEY;
+  if (!key) throw new Error('Email is not set up on the server');
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST', headers: { 'api-key': key, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ sender: { name: OWNER_DEFAULTS.name, email: process.env.NEWSLETTER_FROM_EMAIL || OWNER_EMAIL },
+      replyTo: { name: OWNER_DEFAULTS.name, email: OWNER_EMAIL }, to: [{ email: to }], subject, htmlContent: html, textContent: text }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw new Error(`The email service answered ${r.status}`);
+}
+async function signedFileUrl(bucket, path, seconds, download) {
+  const key = process.env.SB_SERVICE_KEY;
+  const r = await fetch(`${process.env.SB_URL}/storage/v1/object/sign/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, {
+    method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn: seconds }), signal: AbortSignal.timeout(8000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.signedURL) throw new Error('Could not open that file');
+  return `${process.env.SB_URL}/storage/v1${j.signedURL}${download ? `&download=${encodeURIComponent(download)}` : ''}`;
+}
+async function removeFile(bucket, path) {
+  const key = process.env.SB_SERVICE_KEY;
+  await fetch(`${process.env.SB_URL}/storage/v1/object/${bucket}`, {
+    method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: [path] }), signal: AbortSignal.timeout(8000),
+  }).catch(() => {});
+}
+
 async function signedReportUrl(path) {
   const key = process.env.SB_SERVICE_KEY;
   const r = await fetch(`${process.env.SB_URL}/storage/v1/object/sign/reports/${path.split('/').map(encodeURIComponent).join('/')}`, {
@@ -213,7 +273,10 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      if (view === 'me') return res.json({ id: me.id, email: me.email, name: me.name, title: me.title, role: me.role, owner: me.owner });
+      if (view === 'me') {
+        const pending = me.owner ? (await json('member_applications?status=eq.pending&select=id').catch(() => []))?.length || 0 : 0;
+        return res.json({ id: me.id, email: me.email, name: me.name, title: me.title, role: me.role, owner: me.owner, pending });
+      }
       if (view === 'overview') {
         const [traffic, subs, push, preds, jobs] = await Promise.all([
           rpc('admin_overview', { days }),
@@ -224,9 +287,10 @@ export default async function handler(req, res) {
         ]);
         const w = await weekend(preds);
         const health = await json('health_checks?select=ts,ok,failed&order=ts.desc&limit=1').catch(() => []);
+        const pending = me.owner ? (await json('member_applications?status=eq.pending&select=id').catch(() => []))?.length || 0 : 0;
         return res.json({ traffic, subscribers: subs.length, push: push.length, ai: aiSeason(preds),
           predictions: { total: preds.length, baselines: preds.filter(p => p.fallback).length, hidden: preds.filter(p => p.hidden).length },
-          jobs, weekend: w, health: health?.[0] || null });
+          jobs, weekend: w, health: health?.[0] || null, members_pending: pending });
       }
       if (view === 'ai') {
         const [calls, preds, jobs] = await Promise.all([rpc('admin_ai', { days }), predictionsList(), rpc('admin_job_status')]);
@@ -259,6 +323,17 @@ export default async function handler(req, res) {
         const list = (await allUsers()).map(profile).filter(Boolean)
           .sort((a, b) => (b.owner - a.owner) || String(a.created_at).localeCompare(String(b.created_at)));
         return res.json({ admins: list, you: me.id, canManage: me.owner });
+      }
+      if (view === 'invites') {
+        if (!me.owner) return ownerOnly();
+        const rows = await json('admin_invites?select=id,token,role,created_at,expires_at,used_at,revoked&order=created_at.desc&limit=50');
+        return res.json({ invites: (rows || []).map(i => ({ id: i.id, role: i.role, created_at: i.created_at, expires_at: i.expires_at, used_at: i.used_at,
+          state: inviteState(i), link: inviteState(i) === 'waiting' ? `${SITE}/join#t=${i.token}` : null })) });
+      }
+      if (view === 'members') {
+        if (!me.owner) return ownerOnly();
+        const rows = await json('member_applications?select=*&order=created_at.desc&limit=300');
+        return res.json({ applications: rows || [] });
       }
       if (view === 'health') {
         const [scans, log, reports, settings] = await Promise.all([
@@ -327,31 +402,63 @@ export default async function handler(req, res) {
         return res.json({ ok: true });
       }
 
-      // Admins (owner only). New admins sign in with the email and password set here.
-      if (action === 'admin_create') {
+      // Team invites (owner only): a role and a one-time link the person uses to apply.
+      if (action === 'invite_create') {
         if (!me.owner) return ownerOnly();
-        const email = cleanEmail(body.email), name = clip(body.name, 60), title = clip(body.title || 'Admin', 40);
-        const password = String(body.password || '');
-        if (!email) return res.status(400).json({ error: 'Enter a valid email address' });
-        if (!name) return res.status(400).json({ error: 'Enter their name' });
-        if (password.length < 10 || password.length > 72) return res.status(400).json({ error: 'The password needs 10 to 72 characters' });
-        if (email === OWNER_EMAIL) return res.status(400).json({ error: 'That is your own account' });
-        const user_metadata = { full_name: name, title };
-        try {
-          const u = await authAdmin('users', { method: 'POST', body: { email, password, email_confirm: true, app_metadata: { role: 'admin' }, user_metadata } });
-          return res.json({ ok: true, id: u.id });
-        } catch (e) {
-          if (e.status === 422 && /already|exists|registered/i.test(e.message)) {
-            const u = (await allUsers()).find(x => lower(x.email) === email);
-            if (!u) throw e;
-            await authAdmin(`users/${u.id}`, { method: 'PUT', body: { password, email_confirm: true, ban_duration: 'none',
-              app_metadata: { ...(u.app_metadata || {}), role: 'admin' }, user_metadata: { ...(u.user_metadata || {}), ...user_metadata } } });
-            return res.json({ ok: true, id: u.id, existing: true });
-          }
-          if (/password/i.test(e.message)) return res.status(400).json({ error: e.message });
-          throw e;
-        }
+        const role = clip(body.role, 40);
+        if (role.length < 2) return res.status(400).json({ error: 'Type their role first' });
+        const token = randomBytes(32).toString('base64url');
+        const expires_at = new Date(Date.now() + INVITE_DAYS * 864e5).toISOString();
+        const row = (await json('admin_invites', { method: 'POST', prefer: 'return=representation', body: { token, role, created_by: me.id, expires_at } }))?.[0];
+        return res.json({ ok: true, id: row?.id, role, expires_at, link: `${SITE}/join#t=${token}` });
       }
+      if (action === 'invite_revoke') {
+        if (!me.owner) return ownerOnly();
+        if (!UUID_RE.test(String(body.id || ''))) return res.status(400).json({ error: 'Bad id' });
+        await json(`admin_invites?id=eq.${body.id}`, { method: 'PATCH', body: { revoked: true }, prefer: 'return=minimal' });
+        return res.json({ ok: true });
+      }
+
+      // Applications (owner only): open the CV, accept or reject (sends the email), delete.
+      if (action === 'member_cv' || action === 'member_decide' || action === 'member_delete') {
+        if (!me.owner) return ownerOnly();
+        if (!UUID_RE.test(String(body.id || ''))) return res.status(400).json({ error: 'Bad id' });
+        const app = (await json(`member_applications?id=eq.${body.id}&select=*`))?.[0];
+        if (!app) return res.status(404).json({ error: 'That application is gone' });
+        if (action === 'member_cv') {
+          if (!app.cv_path) return res.status(404).json({ error: 'No CV was sent with this application' });
+          return res.json({ url: await signedFileUrl('applications', app.cv_path, 3600, app.cv_name || 'CV') });
+        }
+        if (action === 'member_delete') {
+          if (app.status === 'pending' && app.auth_user_id) await authAdmin(`users/${app.auth_user_id}`, { method: 'DELETE' }).catch(() => {});
+          if (app.cv_path) await removeFile('applications', app.cv_path);
+          await json(`member_applications?id=eq.${app.id}`, { method: 'DELETE', prefer: 'return=minimal' });
+          return res.json({ ok: true });
+        }
+        const decision = body.decision === 'accept' ? 'accepted' : body.decision === 'reject' ? 'rejected' : '';
+        if (!decision) return res.status(400).json({ error: 'Accept or reject?' });
+        if (app.status !== 'pending') return res.status(409).json({ error: `This application was already ${app.status}` });
+        const note = clip(body.note, 1500);
+        if (decision === 'accepted') {
+          if (!app.auth_user_id) return res.status(409).json({ error: 'This application has no sign-in account' });
+          // Unblock their account and make it an admin with the role from the invite.
+          const u = await authAdmin(`users/${app.auth_user_id}`).catch(() => null);
+          if (!u) return res.status(409).json({ error: 'Their sign-in account is missing. Delete this application and send a new invite.' });
+          await authAdmin(`users/${app.auth_user_id}`, { method: 'PUT', body: { ban_duration: 'none',
+            app_metadata: { ...(u.app_metadata || {}), role: 'admin' }, user_metadata: { ...(u.user_metadata || {}), full_name: app.full_name, title: app.role } } });
+        } else if (app.auth_user_id) {
+          await authAdmin(`users/${app.auth_user_id}`, { method: 'DELETE' }).catch(() => {});
+        }
+        let email_status = 'sent';
+        try { await sendMail({ to: app.email, ...decisionEmail({ accepted: decision === 'accepted', name: app.full_name, role: app.role, note }) }); }
+        catch (e) { email_status = `failed: ${e.message}`.slice(0, 120); }
+        await json(`member_applications?id=eq.${app.id}`, { method: 'PATCH', prefer: 'return=minimal', body: {
+          status: decision, decided_at: new Date().toISOString(), decided_by: me.id, decision_note: note || null, email_status,
+          ...(decision === 'rejected' ? { auth_user_id: null } : {}) } });
+        return res.json({ ok: true, status: decision, email: email_status });
+      }
+
+      // Admins (owner only). New admins join through an invite (above).
       if (action === 'admin_remove') {
         if (!me.owner) return ownerOnly();
         const id = String(body.id || '');

@@ -528,6 +528,14 @@ Deno.serve(async (req: Request) => {
     if (task === 'scan') return reply(await scan());
     if (task === 'weekly') return reply(await weekly());
     if (task === 'test') return reply(await testDelivery());
+    // A short message to the owner's channels (used by the join function for new applications).
+    if (task === 'notify') {
+      const body = await req.json().catch(() => ({}));
+      const msg = String(body.text || '').slice(0, 900);
+      if (!msg) return reply({ error: 'No text' }, 400);
+      const s = await settings();
+      return reply({ ok: true, results: Object.values(channels(s)).some(Boolean) ? await sendText(s, msg, typeof body.link === 'string' ? body.link.slice(0, 200) : undefined) : {} });
+    }
     return reply({ error: 'Unknown task' }, 400);
   } catch (e) {
     console.error('[ops]', task, e);

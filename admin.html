@@ -26,7 +26,7 @@
   html,body{background:var(--ground);color:var(--ink);font:400 14px/1.45 'Barlow',system-ui,sans-serif;font-variant-numeric:tabular-nums}
   ::selection{background:var(--lamp);color:#fff}
   :focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
-  button,input,select{font:inherit;color:inherit}
+  button,input,select,textarea{font:inherit;color:inherit}
   button{cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1)}
   button:active:not(:disabled){transform:scale(.97)}
   button:disabled{opacity:.5;cursor:default}
@@ -369,8 +369,10 @@ const ICON = {
   subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
   health:'<path d="M12 21s-7-4.4-9-9.2C1.6 8.3 3.6 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.4 3.3 4 6.8C19 16.6 12 21 12 21z"/>',
   team:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .3 5.5 2.6 5.5 5.8"/>',
+  members:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.4"/><path d="M5.5 16.5c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8M15 9h3M15 13h3"/>',
 };
-const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['team','Admins']];
+const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['team','Admins'],['members','Members']];
+const pagesFor = () => PAGES.filter(([k]) => k !== 'members' || ME?.owner);
 function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
 function lineChart(points, { h = 260 } = {}){
   const w = 640, L = 34, B = 22, T = 10;
@@ -387,7 +389,7 @@ function lineChart(points, { h = 260 } = {}){
 const STAGE = { beforeSprintQ:'Before sprint quali', afterSprintQ:'After sprint quali', afterSprint:'After sprint', beforeQuali:'Before quali', afterQuali:'After quali', final:'After the race' };
 const localTime = iso => iso ? new Date(iso).toLocaleString(undefined, { weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit' }) : '—';
 const shortDate = iso => iso ? new Date(iso).toLocaleDateString(undefined, { day:'numeric', month:'short' }) : '—';
-const ago = iso => { if(!iso) return '—'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+const ago = iso => { if(!iso) return '—'; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); if(m < 1) return 'just now'; if(m < 60) return `${m} min ago`; if(m < 1440) return `${Math.round(m / 60)} h ago`; const d = Math.round(m / 1440); return `${d} day${d === 1 ? '' : 's'} ago`; };
 const JOBS = {
   'auto-results':['Scoring results','scoring','Every 2 hours'], 'supabase-sync':['Session sync','sync','Every 30 min'],
   'retry-predictions':['AI calls and retries','predictions','Every 15 min'], 'rollup-analytics':['Daily visitor totals', null, 'Nightly'],
@@ -397,8 +399,8 @@ const JOBS = {
 /* ── pages ── */
 let page = HOME_PAGE, cache = {}, range = 30;
 function nav(){
-  const badge = cache.needs ? `<em>${cache.needs}</em>` : '';
-  $('nav').innerHTML = PAGES.map(([k, l]) => `<button type="button" class="${k === page ? 'act' : ''}" data-p="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${l}${k === 'weekend' ? badge : ''}</button>`).join('');
+  const badge = n => (n ? `<em>${n}</em>` : '');
+  $('nav').innerHTML = pagesFor().map(([k, l]) => `<button type="button" class="${k === page ? 'act' : ''}" data-p="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${l}${k === 'weekend' ? badge(cache.needs) : k === 'members' ? badge(cache.pending) : ''}</button>`).join('');
   $('nav').querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.p));
 }
 async function go(p){
@@ -421,7 +423,7 @@ function dueAt(stage, race){
 const mailState = ls => !ls ? null : ls.newsletter ? 'sent' : Date.now() - (ls.ended || 0) < 12 * 3600e3 ? 'pending' : 'missed';
 /* What needs the admin right now: calls that are due but missing or baseline, a race report that
    didn't go out, failing jobs, problems the daily scan found. */
-function needsFrom(w, jobs, health){
+function needsFrom(w, jobs, health, members = 0){
   const out = [];
   const nx = w?.next, ls = w?.last;
   (nx?.calls || []).forEach(c => {
@@ -432,6 +434,7 @@ function needsFrom(w, jobs, health){
   if(mailState(ls) === 'missed') out.push({ lamp:'off', text:`The race report for ${esc(ls.name.replace(' Grand Prix',''))} was never sent`, act:`<button class="btn" data-mail="${esc(ls.circuitId)}">Preview</button>` });
   (jobs || []).filter(j => j.failed_7d).forEach(j => out.push({ lamp:'on', text:`${esc(JOBS[j.jobname]?.[0] || j.jobname)} failed ${j.failed_7d} time${j.failed_7d === 1 ? '' : 's'} this week`, act:'' }));
   if(health && !health.ok) out.push({ lamp:'on', text:`The daily scan found ${health.failed} problem${health.failed === 1 ? '' : 's'} ${ago(health.ts)}`, act:'<button class="btn" data-go="health">See them</button>' });
+  if(members > 0) out.push({ lamp:'on', text:`${members} team application${members === 1 ? '' : 's'} waiting for you`, act:'<button class="btn red" data-go="members">Review</button>' });
   return out;
 }
 function callRow(c, race, past){
@@ -508,7 +511,8 @@ const RENDER = {
     const list = (k, n = 8) => (top[k] || []).slice(0, n);
     const ev = Object.fromEntries((top.events || []).map(e => [e.key, e.value]));
     const ai = o.ai || {};
-    const needs = needsFrom(o.weekend, o.jobs, o.health);
+    const needs = needsFrom(o.weekend, o.jobs, o.health, o.members_pending);
+    if(o.members_pending != null) cache.pending = o.members_pending;
     cache.needs = needs.length; nav();
     const lastCircuit = o.weekend?.last?.circuitId || '';
     main.innerHTML = `
@@ -688,9 +692,11 @@ const RENDER = {
   },
 
   async team(main){
-    const d = await api({ view:'admins' });
+    const [d, inv] = await Promise.all([api({ view:'admins' }), ME?.owner ? api({ view:'invites' }) : Promise.resolve({ invites: [] })]);
+    const STATE = { waiting:['ai','Waiting'], used:['none','Used'], expired:['none','Expired'], cancelled:['none','Cancelled'] };
     main.innerHTML = `
-      <div class="top"><h1>Admins</h1><span class="note">Everyone who can sign in to Pit Wall</span></div>
+      <div class="top"><h1>Admins</h1><span class="note">Everyone who can sign in to Pit Wall</span>
+        ${d.canManage ? '<button class="btn red" style="margin-left:auto" id="addAdmin">Add a new admin</button>' : ''}</div>
       <div class="grid g2">
         <section class="panel"><h2>Admins <span>${d.admins.length}</span></h2>
           <table><thead><tr><th>Admin</th><th>Last sign-in</th><th></th></tr></thead><tbody>
@@ -699,40 +705,143 @@ const RENDER = {
             <td class="note" style="white-space:nowrap">${a.last_sign_in_at ? ago(a.last_sign_in_at) : 'Never'}</td>
             <td class="n">${d.canManage && !a.owner ? `<button class="btn" data-rm="${a.id}" data-name="${esc(a.name || a.email)}">Remove</button>` : ''}</td></tr>`).join('')}</tbody></table>
         </section>
-        <section class="panel"><h2>Add an admin</h2>
-          ${d.canManage ? `<form class="form" id="adminForm" novalidate>
-            <div class="row2"><label>Full name<input class="field" id="aName" autocomplete="off" maxlength="60" required></label>
-              <label>Title<input class="field" id="aTitle" autocomplete="off" maxlength="40" value="Admin"></label></div>
-            <label>Email<input class="field" id="aEmail" type="email" inputmode="email" autocomplete="off" required></label>
-            <label>First password<span class="pw"><input class="field" id="aPw" type="text" autocomplete="new-password" minlength="${MIN_PW}" maxlength="72" spellcheck="false" style="padding-right:96px" required><button class="eye" type="button" id="aGen">Make one</button></span></label>
-            <p class="help">Give them their email and this password. They sign in at <b>/admin</b>, then can change it with <b>Change password</b> (or use <b>Forgot password</b>). Admins see everything here, but only you can add or remove admins and change where reports go.</p>
-            <div class="msg" id="aMsg" role="status"></div>
-            <div><button class="btn red" type="submit">Add admin</button></div></form>`
+        <section class="panel"><h2>Invite links <span>${d.canManage ? 'Each works once, for 14 days' : ''}</span></h2>
+          ${d.canManage ? `<p class="help" style="margin-top:4px">Press <b>Add a new admin</b>, type their role and send them the link. They fill in their details and choose a password, then you review them under <b>Members</b> and accept or reject. They get an email from you either way.</p>
+          ${(inv.invites || []).map(i => `<div class="call"><div class="what"><b>${esc(i.role)}</b><small><span class="tag ${STATE[i.state][0]}">${STATE[i.state][1]}</span><span>made ${ago(i.created_at)}${i.state === 'waiting' ? ` · works until ${shortDate(i.expires_at)}` : i.used_at ? ` · used ${ago(i.used_at)}` : ''}</span></small></div>
+            <span class="acts">${i.link ? `<button class="btn" data-copy="${esc(i.link)}">Copy link</button><button class="btn" data-revoke="${i.id}">Cancel</button>` : ''}</span></div>`).join('') || '<div class="empty">No invite links yet.</div>'}`
           : '<p class="help">Only the owner can add or remove admins.</p>'}
         </section>
       </div>`;
-    if(d.canManage){
-      // 12 random characters without look-alikes (no 0/o, 1/l/i), in three groups: easy to read out, ~59 bits.
-      $('aGen').onclick = () => { const abc = 'abcdefghjkmnpqrstuvwxyz23456789', a = new Uint32Array(12); crypto.getRandomValues(a);
-        const c = [...a].map(n => abc[n % abc.length]).join(''); $('aPw').value = `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`; };
-      $('adminForm').onsubmit = async e => {
-        e.preventDefault();
-        const m = $('aMsg'), body = { name: $('aName').value.trim(), title: $('aTitle').value.trim() || 'Admin', email: $('aEmail').value.trim(), password: $('aPw').value };
-        if(!body.name || !body.email){ m.className = 'msg err'; m.textContent = 'Enter their name and email.'; return; }
-        if(body.password.length < MIN_PW){ m.className = 'msg err'; m.textContent = `The password needs at least ${MIN_PW} characters.`; return; }
-        m.className = 'msg'; m.textContent = 'Adding…';
-        try{ const r = await api({ action:'admin_create' }, body); toast(r.existing ? `${body.name} is an admin again` : `${body.name} is now an admin`); go('team'); }
-        catch(err){ m.className = 'msg err'; m.textContent = err.message; }
-      };
-      main.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
-        if(!confirm(`Remove ${b.dataset.name}? Their account is deleted and they can't sign in any more.`)) return;
-        b.disabled = true;
-        try{ await api({ action:'admin_remove' }, { id: b.dataset.rm }); toast(`Removed ${b.dataset.name}`); go('team'); }
-        catch(err){ toast(err.message); b.disabled = false; }
-      });
-    }
+    if(!d.canManage) return;
+    $('addAdmin').onclick = () => inviteDialog();
+    main.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyText(b.dataset.copy));
+    main.querySelectorAll('[data-revoke]').forEach(b => b.onclick = async () => {
+      if(!confirm('Cancel this invite link? Anyone who has it won’t be able to use it.')) return;
+      b.disabled = true;
+      try{ await api({ action:'invite_revoke' }, { id: b.dataset.revoke }); toast('Invite cancelled'); go('team'); }
+      catch(err){ toast(err.message); b.disabled = false; }
+    });
+    main.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      if(!confirm(`Remove ${b.dataset.name}? Their account is deleted and they can't sign in any more.`)) return;
+      b.disabled = true;
+      try{ await api({ action:'admin_remove' }, { id: b.dataset.rm }); toast(`Removed ${b.dataset.name}`); go('team'); }
+      catch(err){ toast(err.message); b.disabled = false; }
+    });
+  },
+
+  async members(main){
+    if(!ME?.owner){ main.innerHTML = '<div class="panel"><h2>Members</h2><p class="help">Only the owner reviews applications.</p></div>'; return; }
+    const { applications: apps } = await api({ view:'members' });
+    const pending = apps.filter(a => a.status === 'pending');
+    cache.pending = pending.length; nav();
+    const TAG = { pending:['found','Waiting for you'], accepted:['ai','Accepted'], rejected:['none','Rejected'] };
+    const row = a => `<div class="call"><div class="what"><b>${esc(a.full_name)}</b><small><span class="tag ${TAG[a.status][0]}">${TAG[a.status][1]}</span>
+        <span>${esc(a.role)} · ${ageOf(a.date_of_birth)} · applied ${ago(a.created_at)}${a.decided_at ? ` · ${a.status} ${ago(a.decided_at)}` : ''}</span></small></div>
+      <span class="acts"><button class="btn ${a.status === 'pending' ? 'red' : ''}" data-review="${a.id}">${a.status === 'pending' ? 'Review' : 'Open'}</button></span></div>`;
+    main.innerHTML = `
+      <div class="top"><h1>Members</h1><span class="note">People who applied to join the team through an invite link</span>
+        <button class="btn" style="margin-left:auto" data-go="team">Make an invite link</button></div>
+      <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+        <div><span>Waiting for you</span><b>${pending.length}</b><small>Applications to review</small></div>
+        <div><span>Accepted</span><b>${apps.filter(a => a.status === 'accepted').length}</b><small>Now admins</small></div>
+        <div><span>Rejected</span><b>${apps.filter(a => a.status === 'rejected').length}</b><small>Told by email</small></div>
+      </div>
+      <div class="grid g2">
+        <section class="panel"><h2>Waiting for you <span>${pending.length}</span></h2>${pending.map(row).join('') || '<div class="empty">No applications waiting. Make an invite link on the Admins page and send it to someone.</div>'}</section>
+        <section class="panel"><h2>Decided <span>${apps.length - pending.length}</span></h2>${apps.filter(a => a.status !== 'pending').map(row).join('') || '<div class="empty">Nothing decided yet.</div>'}</section>
+      </div>`;
+    wireActions(main, () => go('members'));
+    main.querySelectorAll('[data-review]').forEach(b => b.onclick = () => reviewDialog(apps.find(a => a.id === b.dataset.review)));
   },
 };
+
+/* ── team invites and applications ── */
+const ageOf = dob => { if(!dob) return 'age unknown'; const d = new Date(`${dob}T00:00:00Z`), n = new Date(); let y = n.getUTCFullYear() - d.getUTCFullYear(); if(n.getUTCMonth() < d.getUTCMonth() || (n.getUTCMonth() === d.getUTCMonth() && n.getUTCDate() < d.getUTCDate())) y--; return `${y} years old`; };
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); toast('Link copied'); }
+  catch{ const i = document.createElement('textarea'); i.value = t; document.body.append(i); i.select(); try{ document.execCommand('copy'); toast('Link copied'); }catch{ toast('Copy it from the box'); } i.remove(); }
+}
+function inviteDialog(){
+  const dlg = $('dlg'), body = $('dlgBody');
+  body.innerHTML = `<h2 style="font:600 17px Barlow">Add a new admin</h2>
+    <form id="invForm" class="form" novalidate>
+      <label for="invRole">Their role<input class="field" id="invRole" maxlength="40" autocomplete="off" placeholder="e.g. Data analyst, Social media, Editor" required></label>
+      <p class="help" style="margin-top:0">This becomes their title in Pit Wall once you accept them.</p>
+      <div class="msg" id="invMsg" role="status"></div>
+      <div class="row-end"><button class="btn" type="button" id="invClose">Cancel</button><button class="btn red" type="submit">Create the invite link</button></div>
+    </form>`;
+  dlg.showModal(); $('invRole').focus();
+  $('invClose').onclick = () => dlg.close();
+  $('invForm').onsubmit = async e => {
+    e.preventDefault();
+    const role = $('invRole').value.trim(), m = $('invMsg');
+    if(role.length < 2){ m.className = 'msg err'; m.textContent = 'Type their role first.'; return; }
+    const btn = e.submitter || e.target.querySelector('[type=submit]'); btn.disabled = true;
+    try{
+      const r = await api({ action:'invite_create' }, { role });
+      const msg = `Hi! I'd like you to join the F1 Predictor team as ${r.role}. Fill in your details here: ${r.link}`;
+      body.innerHTML = `<h2 style="font:600 17px Barlow">Invite link for ${esc(r.role)}</h2>
+        <p class="help">Send this link to the person. It works once, until ${shortDate(r.expires_at)}. When they apply, it shows up under <b>Members</b>.</p>
+        <input class="field" id="invLink" readonly value="${esc(r.link)}" style="font:500 13px Barlow;margin-top:12px" aria-label="Invite link">
+        <div class="row-end"><button class="btn" id="invDone">Done</button>
+          <a class="btn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Share on WhatsApp</a>
+          <button class="btn red" id="invCopy">Copy link</button></div>`;
+      $('invLink').onfocus = ev => ev.target.select();
+      $('invCopy').onclick = () => copyText(r.link);
+      $('invDone').onclick = () => { dlg.close(); if(page === 'team') go('team'); };
+    }catch(err){ m.className = 'msg err'; m.textContent = err.message; btn.disabled = false; }
+  };
+}
+function reviewDialog(a){
+  if(!a) return;
+  const dlg = $('dlg'), body = $('dlgBody');
+  const item = (k, v) => v == null || v === '' ? '' : `<div class="tr" style="align-items:flex-start;min-height:28px"><span class="k" style="width:150px;color:var(--ink-3)">${k}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere">${v}</span></div>`;
+  const link = u => u ? `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : '';
+  const block = (title, rows) => { const inner = rows.join(''); return inner ? `<h3 style="font:600 14px Barlow;margin:16px 0 4px">${title}</h3>${inner}` : ''; };
+  const dob = a.date_of_birth ? `${new Date(`${a.date_of_birth}T12:00:00Z`).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' })} (${ageOf(a.date_of_birth)})` : '';
+  body.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0"><h2 style="font:italic 800 28px/1.05 'Barlow Condensed';text-transform:uppercase">${esc(a.full_name)}</h2>
+        <p class="note" style="margin-top:4px">Applied ${ago(a.created_at)} to join as <b style="color:var(--ink)">${esc(a.role)}</b></p></div>
+      ${a.cv_path ? '<button class="btn" id="rvCv">Open CV</button>' : '<span class="note">No CV sent</span>'}</div>
+    <div style="max-height:52vh;overflow:auto;margin-top:6px;padding-right:4px">
+      ${block('About them', [item('Date of birth', esc(dob)), item('Email', `<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`), item('Phone', esc(a.phone)), item('Lives in', esc(a.location))])}
+      ${block('Education', [item('Level', esc(a.education_level)), item('School or university', esc(a.school)), item('Major', esc(a.major)), item('Graduation year', esc(a.graduation_year))])}
+      ${block('Work and skills', [item('What they do now', esc(a.occupation)), item('Skills', esc(a.skills)), item('Languages', esc(a.languages)), item('Time each week', a.hours_per_week != null ? `${esc(a.hours_per_week)} hours` : '')])}
+      ${block('More', [item('Interests', esc(a.interests)), item('LinkedIn', link(a.linkedin)), item('Website', link(a.website)), item('Why they want to join', esc(a.about).replace(/\n/g, '<br>'))])}
+    </div>
+    ${a.status === 'pending' ? `<label class="lab" for="rvNote">A personal line for their email (optional)</label>
+      <textarea class="field" id="rvNote" rows="3" maxlength="1500" style="height:auto;padding:10px 14px;resize:vertical" placeholder="Added to the email under the main message"></textarea>
+      <div class="msg" id="rvMsg" role="status"></div>
+      <div class="row-end"><button class="btn" id="rvClose">Close</button><button class="btn" id="rvReject">Reject</button><button class="btn red" id="rvAccept">Accept</button></div>`
+    : `<p class="note" style="margin-top:14px">${a.status === 'accepted' ? 'Accepted' : 'Rejected'} ${ago(a.decided_at)} · email ${esc(a.email_status || 'not sent')}${a.decision_note ? ` · your note: “${esc(a.decision_note)}”` : ''}</p>
+      <div class="row-end"><button class="btn" id="rvClose">Close</button><button class="btn" id="rvDelete">Delete this application</button></div>`}`;
+  if(!dlg.open) dlg.showModal();
+  $('rvClose').onclick = () => dlg.close();
+  if($('rvCv')) $('rvCv').onclick = async () => {
+    const w = window.open('', '_blank');
+    try{ const { url } = await api({ action:'member_cv' }, { id: a.id }); if(w) w.location = url; else location.href = url; }
+    catch(err){ if(w) w.close(); toast(err.message); }
+  };
+  const decide = async decision => {
+    const first = a.full_name.split(/\s+/)[0];
+    if(!confirm(decision === 'accept' ? `Accept ${a.full_name} as ${a.role}? They become an admin and get a "welcome to the team" email from you.` : `Reject ${a.full_name}? They get a "sorry, we couldn't accept you" email from you and their sign-in is deleted.`)) return;
+    ['rvAccept','rvReject'].forEach(id => $(id).disabled = true);
+    const m = $('rvMsg'); m.className = 'msg'; m.textContent = 'Saving and sending the email…';
+    try{
+      const r = await api({ action:'member_decide' }, { id: a.id, decision, note: $('rvNote').value.trim() });
+      dlg.close();
+      toast(r.email === 'sent' ? (decision === 'accept' ? `${first} is on the team. Welcome email sent.` : `Rejected. ${first} got your email.`) : `Saved, but the email didn't go out (${r.email}).`);
+      go('members');
+    }catch(err){ m.className = 'msg err'; m.textContent = err.message; ['rvAccept','rvReject'].forEach(id => $(id).disabled = false); }
+  };
+  if($('rvAccept')) $('rvAccept').onclick = () => decide('accept');
+  if($('rvReject')) $('rvReject').onclick = () => decide('reject');
+  if($('rvDelete')) $('rvDelete').onclick = async () => {
+    if(!confirm(`Delete ${a.full_name}'s application and CV for good? ${a.status === 'accepted' ? 'They stay an admin; remove them on the Admins page if needed.' : ''}`)) return;
+    try{ await api({ action:'member_delete' }, { id: a.id }); dlg.close(); toast('Application deleted'); go('members'); }
+    catch(err){ toast(err.message); }
+  };
+}
 
 /* Delivery settings for the weekly report. Tokens are sent to the server once and never shown again. */
 function deliveryHtml(dv, can){
@@ -826,9 +935,10 @@ async function start(){
     $('meTitle').textContent = ME.title || (ME.owner ? 'Owner' : 'Admin');
     $('meTitle').classList.toggle('quiet', !ME.owner);
     $('meEmail').textContent = ME.email;
+    cache.pending = ME.pending || 0;
     $('login').hidden = true; $('app').classList.add('on');
     const want = location.hash.slice(1);
-    go(PAGES.some(p => p[0] === want) ? want : HOME_PAGE);
+    go(pagesFor().some(p => p[0] === want) ? want : HOME_PAGE);
   }catch(e){
     if(e.message === 'signed out') return;
     store.del('pw_session');
