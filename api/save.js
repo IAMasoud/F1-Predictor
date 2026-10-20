@@ -8,7 +8,8 @@
 // are validated, trimmed to known fields and written with the server key.
 import { isAllowedOrigin, clientIp, rateLimited, sb } from './_guard.js';
 
-const STAGES = new Set(['beforeQuali', 'beforeSprintQ', 'afterSprintQ', 'afterSprint', 'afterQuali', 'final']);
+// Pre-race stages only: a prediction saved after the race ('final') would be made with the result known.
+const STAGES = new Set(['beforeQuali', 'beforeSprintQ', 'afterSprintQ', 'afterSprint', 'afterQuali']);
 const SESSION = /^(Practice [1-3]|Sprint Qualifying|Sprint Shootout|Sprint|Qualifying|Race)$/;
 const ABBR = /^[A-Z]{3}$/;
 

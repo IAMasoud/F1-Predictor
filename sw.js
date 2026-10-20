@@ -4,7 +4,7 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v63';
+const CACHE = 'f1-predictor-v64';
 const STATIC = [
   '/',
   '/index.html',
@@ -40,11 +40,21 @@ self.addEventListener('fetch', e => {
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
   if (!(sameOrigin || isFont) || (sameOrigin && url.pathname.startsWith('/api/'))) return;
 
-  // Page loads: serve the cached app, fall back to network
+  // Page loads: the latest app from the network (so a deploy shows on the first open),
+  // the cached copy when offline or the network takes longer than 4 seconds.
   if (e.request.mode === 'navigate') {
-    e.respondWith(
-      caches.match('/index.html').then(cached => cached || fetch(e.request))
-    );
+    e.respondWith((async () => {
+      try {
+        const res = await fetch(e.request, { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put('/index.html', clone)).catch(() => {});
+        }
+        return res;
+      } catch {
+        return (await caches.match('/index.html')) || Response.error();
+      }
+    })());
     return;
   }
 

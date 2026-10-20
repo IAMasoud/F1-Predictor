@@ -486,6 +486,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Misconfigured' });
 
   webpush.setVapidDetails('mailto:ahmoudy365@gmail.com', VAPID_PUB, VAPID_PRIV);
+  // ?mode=predictions (hourly, from Supabase pg_cron): only fill in missing stage predictions
+  // and retry baseline ones. The daily Vercel runs also send the time-based notifications.
+  const predictionsOnly = req.query?.mode === 'predictions';
   await loadLiveStandings();
 
   const today = todayUTC();
@@ -493,7 +496,7 @@ export default async function handler(req, res) {
   const notifications = [];
   const autoGenLog = [];
 
-  const [liveRaceSession, recentPractice] = await Promise.all([
+  const [liveRaceSession, recentPractice] = predictionsOnly ? [null, null] : await Promise.all([
     getLiveRaceSession(),
     getRecentPracticeSession(),
   ]);
@@ -503,6 +506,7 @@ export default async function handler(req, res) {
     const qualiH = parseInt(race.qualiUTC);
 
     // ── EXISTING TIME-BASED PUSH NOTIFICATIONS ──
+    if (!predictionsOnly) {
     const friday = offsetDate(race.date, -2);
     if (today === friday && hour >= 7 && hour <= 13) {
       notifications.push({ type:'raceWeekend', payload:{
@@ -558,6 +562,7 @@ export default async function handler(req, res) {
         title:`🏆 ${race.name} — Results ready`,
         body:'Official results are in. See how accurate your AI prediction was!',
         url:'/' }});
+    }
     }
 
     // ── AUTO-GENERATE PREDICTIONS WHEN INSIDE RACE WEEKEND WINDOW ──

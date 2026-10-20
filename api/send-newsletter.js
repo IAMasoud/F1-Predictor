@@ -11,7 +11,8 @@ import { unsubToken } from './_guard.js';
 export const config = { maxDuration: 30 };
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const PRE_RACE_STAGES = ['final', 'afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
+// 'final' snapshots are made after the race, so they never count as the AI's call.
+const PRE_RACE_STAGES = ['afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
 
 // Same formula as the website and the scoring job: exact = 1, within ±2 = 0.5.
 function calcAccuracy(predAbbrs, actualAbbrs) {
@@ -293,7 +294,7 @@ export default async function handler(req, res) {
     const grid = (sess.grid_data || []).filter(g => g.abbr && g.pos).sort((x, y) => x.pos - y.pos);
 
     // The AI's final pre-race prediction for this race (baselines don't count as AI).
-    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${meta.id}&round=eq.${meta.round}&pred_type=eq.race&select=stage,prediction,accuracy`, { headers: sbHeaders });
+    const predR = await fetch(`${SB_URL}/rest/v1/predictions?circuit_id=eq.${meta.id}&round=eq.${meta.round}&pred_type=eq.race&stage=neq.final&select=stage,prediction,accuracy`, { headers: sbHeaders });
     const best = ((await predR.json()) || [])
       .filter(p => p.prediction?.top10?.length && !p.prediction._fallback)
       .sort((x, y) => (PRE_RACE_STAGES.indexOf(x.stage) + 1 || 50) - (PRE_RACE_STAGES.indexOf(y.stage) + 1 || 50))[0];

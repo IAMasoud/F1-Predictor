@@ -1620,7 +1620,8 @@ async function saveRow(type, row){
 }
 async function refreshPredictionsCache(){
   // Pull up to 200 snapshots — enough to cover full season × stages × race/sprint variants
-  cachedPredictions = await sbGet('predictions?select=*&order=created_at.desc&limit=200');
+  // Post-race ('final') snapshots were made after the result was known, so they never count.
+  cachedPredictions = (await sbGet('predictions?select=*&stage=neq.final&order=created_at.desc&limit=200')) || [];
   if(cachedPredictions && cachedPredictions.length > 0){
     if(typeof unlockArchTab === 'function') unlockArchTab();
   }
@@ -1919,7 +1920,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.63';
+const APP_VERSION = 'BETA 1.64';
 
 // 2026 race distance (total laps) per circuit — used to auto-fill the live
 // prediction so the user never has to type it. Falls back to live feed if present.
@@ -3395,7 +3396,19 @@ async function runAIPrediction(type){
   const forceFresh = window._forceFreshPrediction === true;
   // A stored baseline (non-AI) snapshot is not reused: ask the AI, and only fall back to it if the AI fails.
   let baselineSnap = null;
-  if(!forceFresh){
+  // After the race, show the AI's last pre-race call (the one that gets scored) instead of a new one.
+  if(currentStage === 'final' && !forceFresh){
+    const pre = await getBestPreRaceSnapshot(race, predictionMode);
+    if(pre?.prediction?.top10?.length){
+      lastPrediction = pre.prediction;
+      renderPrediction(pre.prediction, race, useQ);
+      $('predictBtn').disabled = false;
+      if(sb) sb.disabled = false;
+      setStatus(`✓ Race finished — the AI's last call before the race (${stageLabel(pre.stage)})`, 'live');
+      return;
+    }
+  }
+  if(!forceFresh && currentStage !== 'final'){
     const cached = await getStoredPrediction(race, predictionMode, currentStage);
     if(cached?.prediction?._fallback) baselineSnap = cached;
     else if(cached && cached.prediction?.top10?.length){
@@ -4690,6 +4703,8 @@ function stagesForRace(race){
 
 async function savePrediction(race, prediction, predType, stage){
   const finalStage = stage || getCurrentStage(race);
+  // Once the race is over a "prediction" would be made with the result known: show it, never store it.
+  if(finalStage === 'final' || getCurrentStage(race) === 'final') return false;
   await saveRow('prediction', {
     race_name:race.name, round:Number(race.round), circuit_id:race.circuitId,
     race_date:race.date, pred_type:predType||'race', stage: finalStage, prediction });
@@ -4697,11 +4712,11 @@ async function savePrediction(race, prediction, predType, stage){
 }
 
 /* The prediction AI vs Reality should judge: the last one made before the race
-   (final → afterQuali → afterSprint → afterSprintQ → before…), preferring a real AI
-   prediction over a baseline. Mid-race live predictions are never saved. */
-const PRE_RACE_STAGE_ORDER = ['final','afterQuali','afterSprint','afterSprintQ','beforeQuali','beforeSprintQ'];
+   (afterQuali → afterSprint → afterSprintQ → before…), preferring a real AI prediction
+   over a baseline. Post-race ('final') and mid-race predictions never count. */
+const PRE_RACE_STAGE_ORDER = ['afterQuali','afterSprint','afterSprintQ','beforeQuali','beforeSprintQ'];
 async function getBestPreRaceSnapshot(race, predType){
-  const rows = await sbGet(`predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.${predType||'race'}&order=created_at.desc`);
+  const rows = await sbGet(`predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.${predType||'race'}&stage=neq.final&order=created_at.desc`);
   if(!rows?.length) return null;
   const rank = r => (r.prediction?._fallback ? 100 : 0) + (PRE_RACE_STAGE_ORDER.indexOf(r.stage) + 1 || 50);
   return rows.slice().sort((a,b) => rank(a) - rank(b))[0];
@@ -7252,8 +7267,22 @@ if(new URLSearchParams(location.search).has('unsubscribe')){
 setTimeout(buildH2HSelectors, 1500);
 
 if ('serviceWorker' in navigator) {
+  // A new version takes over as soon as it installs (sw.js skips waiting); reload once
+  // onto it so an update never needs a second reopen. First installs don't reload.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
+      // Check for a new version whenever the app comes back to the foreground.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
   });
 }
 

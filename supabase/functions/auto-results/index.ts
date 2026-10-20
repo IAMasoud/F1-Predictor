@@ -134,15 +134,21 @@ async function fetchOpenF1Results(location: string, sessionType: 'Race' | 'Sprin
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
-// Runs every 2 hours (pg_cron). For every finished race it (re)scores EACH stored
-// snapshot on its own against the official classification, and only writes rows
-// whose score or stored result actually changed.
-Deno.serve(async () => {
+// Runs every 2 hours (pg_cron). For every race finished in the last 14 days it
+// (re)scores EACH stored snapshot on its own against the official classification,
+// and only writes rows whose score or stored result actually changed. Older races
+// are settled; call with ?all=1 to rescore the whole season.
+const RECENT_MS = 14 * 86400 * 1000;
+Deno.serve(async (req: Request) => {
+  const all = new URL(req.url).searchParams.get('all') === '1';
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const now = Date.now();
   const details: string[] = [];
 
-  const finished = CALENDAR_2026.filter(r => now - new Date(r.raceDate).getTime() >= 3 * 3600 * 1000);
+  const finished = CALENDAR_2026.filter(r => {
+    const since = now - new Date(r.raceDate).getTime();
+    return since >= 3 * 3600 * 1000 && (all || since <= RECENT_MS);
+  });
 
   for (const race of finished) {
     const kinds = race.sprint
