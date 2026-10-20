@@ -1,33 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// The shared season calendar (season.js in the repo root).
+import { loadSeason } from '../../../season.js'
 
 const OPENF1 = 'https://api.openf1.org/v1';
-
-// Full 2026 calendar — 22 rounds (Bahrain & Saudi Arabia CANCELLED)
-const CALENDAR_2026 = [
-  { round:1,  circuitId:'albert_park',  location:'Melbourne',   raceDate:'2026-03-08', sprint:false },
-  { round:2,  circuitId:'shanghai',     location:'Shanghai',    raceDate:'2026-03-15', sprint:true  },
-  { round:3,  circuitId:'suzuka',       location:'Suzuka',      raceDate:'2026-03-29', sprint:false },
-  { round:4,  circuitId:'miami',        location:'Miami Gardens',       raceDate:'2026-05-03', sprint:true  },
-  { round:5,  circuitId:'villeneuve',   location:'Montréal',    raceDate:'2026-05-24', sprint:true  },
-  { round:6,  circuitId:'monaco',       location:'Monte Carlo',      raceDate:'2026-06-07', sprint:false },
-  { round:7,  circuitId:'catalunya',    location:'Barcelona',   raceDate:'2026-06-14', sprint:false },
-  { round:8,  circuitId:'red_bull_ring',location:'Spielberg',   raceDate:'2026-06-28', sprint:false },
-  { round:9,  circuitId:'silverstone',  location:'Silverstone', raceDate:'2026-07-05', sprint:true  },
-  { round:10, circuitId:'spa',          location:'Spa-Francorchamps',         raceDate:'2026-07-19', sprint:false },
-  { round:11, circuitId:'hungaroring',  location:'Budapest',    raceDate:'2026-07-26', sprint:false },
-  { round:12, circuitId:'zandvoort',    location:'Zandvoort',   raceDate:'2026-08-23', sprint:true  },
-  { round:13, circuitId:'monza',        location:'Monza',       raceDate:'2026-09-06', sprint:false },
-  { round:14, circuitId:'ifema_madrid', location:'Madrid',      raceDate:'2026-09-13', sprint:false },
-  { round:15, circuitId:'baku',         location:'Baku',        raceDate:'2026-09-26', sprint:false },
-  { round:16, circuitId:'sepang',         location:'Kuala Lumpur',        raceDate:'2026-10-04', sprint:false },
-  { round:17, circuitId:'marina_bay',   location:'Marina Bay',   raceDate:'2026-10-11', sprint:true  },
-  { round:18, circuitId:'americas',     location:'Austin',      raceDate:'2026-10-25', sprint:false },
-  { round:19, circuitId:'rodriguez',    location:'Mexico City', raceDate:'2026-11-01', sprint:false },
-  { round:20, circuitId:'interlagos',   location:'São Paulo',   raceDate:'2026-11-08', sprint:false },
-  { round:21, circuitId:'las_vegas',    location:'Las Vegas',   raceDate:'2026-11-22', sprint:false },
-  { round:22, circuitId:'losail',       location:'Lusail',      raceDate:'2026-11-29', sprint:false },
-  { round:23, circuitId:'yas_marina',   location:'Yas Marina',   raceDate:'2026-12-06', sprint:false },
-];
 
 Deno.serve(async () => {
   const supabase = createClient(
@@ -37,10 +12,11 @@ Deno.serve(async () => {
 
   const now = new Date();
   const results: string[] = [];
+  const { season, races } = await loadSeason();
 
   // Find race weekends active in the last 5 days or next 1 day
-  const activeRaces = CALENDAR_2026.filter(race => {
-    const raceDate = new Date(race.raceDate);
+  const activeRaces = races.filter((race: any) => {
+    const raceDate = new Date(race.date);
     const diffDays = (raceDate.getTime() - now.getTime()) / (1000*60*60*24);
     return diffDays >= -2 && diffDays <= 5;
   });
@@ -48,14 +24,14 @@ Deno.serve(async () => {
   for (const race of activeRaces) {
     try {
       // Get OpenF1 meeting
-      const mRes = await fetch(`${OPENF1}/meetings?year=2026&location=${encodeURIComponent(race.location)}`);
+      const mRes = await fetch(`${OPENF1}/meetings?year=${season}&location=${encodeURIComponent(race.of1)}`);
       if (!mRes.ok) continue;
       const meetings = await mRes.json();
       if (!meetings?.length) continue;
       const meeting = meetings[0];
 
       // Get sessions
-      const sRes = await fetch(`${OPENF1}/sessions?meeting_key=${meeting.meeting_key}&year=2026`);
+      const sRes = await fetch(`${OPENF1}/sessions?meeting_key=${meeting.meeting_key}&year=${season}`);
       if (!sRes.ok) continue;
       const sessions = await sRes.json();
       if (!sessions?.length) continue;
@@ -70,7 +46,7 @@ Deno.serve(async () => {
           .select('id, grid_data')
           .eq('circuit_id', race.circuitId)
           .eq('round', race.round)
-          .eq('year', 2026)
+          .eq('year', season)
           .eq('session_name', sess.session_name)
           .maybeSingle();
 
@@ -84,7 +60,7 @@ Deno.serve(async () => {
           fetch(`${OPENF1}/drivers?session_key=${sess.session_key}&meeting_key=${meeting.meeting_key}`),
         ]);
 
-        if (!posRes.ok) { results.push(`OpenF1 positions unavailable (${posRes.status}): ${race.location} — ${sess.session_name}`); continue; }
+        if (!posRes.ok) { results.push(`OpenF1 positions unavailable (${posRes.status}): ${race.of1} — ${sess.session_name}`); continue; }
         const positions  = await posRes.json();
         const driverList = drvRes.ok  ? await drvRes.json()  : [];
 
@@ -102,19 +78,19 @@ Deno.serve(async () => {
         });
 
         // Without the driver list we'd only have car numbers — wait for the next run.
-        if (!Object.keys(numToAbbr).length) { results.push(`Driver list not available yet: ${race.location} — ${sess.session_name}`); continue; }
+        if (!Object.keys(numToAbbr).length) { results.push(`Driver list not available yet: ${race.of1} — ${sess.session_name}`); continue; }
         const gridData = Object.values(latest)
           .sort((a: any, b: any) => a.position - b.position)
           .map((p: any) => ({ abbr: numToAbbr[p.driver_number], pos: p.position }))
           .filter((g: any) => /^[A-Z]{3}$/.test(g.abbr || ''));
 
-        if (!gridData.length) { results.push(`No positions yet: ${race.location} — ${sess.session_name}`); continue; }
+        if (!gridData.length) { results.push(`No positions yet: ${race.of1} — ${sess.session_name}`); continue; }
 
         // Save to Supabase
         await supabase.from('sessions').upsert({
           circuit_id:   race.circuitId,
           round:        race.round,
-          year:         2026,
+          year:         season,
           session_name: sess.session_name,
           session_key:  sess.session_key,
           grid_data:    gridData,
@@ -123,10 +99,10 @@ Deno.serve(async () => {
           fetched_at:   new Date().toISOString(),
         }, { onConflict: 'circuit_id,round,year,session_name' });
 
-        results.push(`Saved: ${race.location} — ${sess.session_name}`);
+        results.push(`Saved: ${race.of1} — ${sess.session_name}`);
       }
     } catch(e: any) {
-      results.push(`Error ${race.location}: ${e.message}`);
+      results.push(`Error ${race.of1}: ${e.message}`);
     }
   }
 

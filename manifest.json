@@ -1,12 +1,12 @@
 {
-  "name": "F1 AI Race Predictor 2026",
+  "name": "F1 AI Race Predictor",
   "short_name": "F1 Predictor",
   "description": "AI-powered Formula 1 race predictions, live standings, and analytics",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0d0d0d",
-  "theme_color": "#E10600",
+  "background_color": "#070708",
+  "theme_color": "#070708",
   "icons": [
     {
       "src": "/icons/icon-192.png",

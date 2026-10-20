@@ -1,34 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// The shared season calendar (season.js in the repo root).
+import { loadSeason } from '../../../season.js'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1';
 const OPENF1  = 'https://api.openf1.org/v1';
-
-// ─── 2026 CALENDAR (23 rounds — Saudi Arabia cancelled; Bahrain GP held at Sepang, Malaysia) ─────────────
-const CALENDAR_2026 = [
-  { round:1,  circuitId:'albert_park', location:'Melbourne',  raceDate:'2026-03-08', sprint:false },
-  { round:2,  circuitId:'shanghai',    location:'Shanghai',   raceDate:'2026-03-15', sprint:true  },
-  { round:3,  circuitId:'suzuka',      location:'Suzuka',     raceDate:'2026-03-29', sprint:false },
-  { round:4,  circuitId:'miami',       location:'Miami Gardens',      raceDate:'2026-05-03', sprint:true  },
-  { round:5,  circuitId:'villeneuve',  location:'Montréal',   raceDate:'2026-05-24', sprint:true  },
-  { round:6,  circuitId:'monaco',      location:'Monte Carlo',     raceDate:'2026-06-07', sprint:false },
-  { round:7,  circuitId:'catalunya',   location:'Barcelona',  raceDate:'2026-06-14', sprint:false },
-  { round:8,  circuitId:'red_bull_ring',location:'Spielberg', raceDate:'2026-06-28', sprint:false },
-  { round:9,  circuitId:'silverstone', location:'Silverstone',raceDate:'2026-07-05', sprint:true  },
-  { round:10, circuitId:'spa',         location:'Spa-Francorchamps',        raceDate:'2026-07-19', sprint:false },
-  { round:11, circuitId:'hungaroring', location:'Budapest',   raceDate:'2026-07-26', sprint:false },
-  { round:12, circuitId:'zandvoort',   location:'Zandvoort',  raceDate:'2026-08-23', sprint:true  },
-  { round:13, circuitId:'monza',       location:'Monza',      raceDate:'2026-09-06', sprint:false },
-  { round:14, circuitId:'ifema_madrid',location:'Madrid',     raceDate:'2026-09-13', sprint:false },
-  { round:15, circuitId:'baku',        location:'Baku',       raceDate:'2026-09-26', sprint:false },
-  { round:16, circuitId:'sepang',        location:'Kuala Lumpur',       raceDate:'2026-10-04', sprint:false },
-  { round:17, circuitId:'marina_bay',  location:'Marina Bay',  raceDate:'2026-10-11', sprint:true  },
-  { round:18, circuitId:'americas',    location:'Austin',     raceDate:'2026-10-25', sprint:false },
-  { round:19, circuitId:'rodriguez',   location:'Mexico City',raceDate:'2026-11-01', sprint:false },
-  { round:20, circuitId:'interlagos',  location:'São Paulo',  raceDate:'2026-11-08', sprint:false },
-  { round:21, circuitId:'las_vegas',   location:'Las Vegas',  raceDate:'2026-11-22', sprint:false },
-  { round:22, circuitId:'losail',      location:'Lusail',     raceDate:'2026-11-29', sprint:false },
-  { round:23, circuitId:'yas_marina',  location:'Yas Marina',  raceDate:'2026-12-06', sprint:false },
-];
 
 // Ergast driver IDs → our abbreviations
 const ERGAST_TO_ABBR: Record<string, string> = {
@@ -87,9 +62,9 @@ const toAbbr = (x: any): string => {
 const isIdList = (a: any) => Array.isArray(a) && a.length >= 15 && a.every((x: any) => typeof x === 'string' && /^[a-z_]+$/.test(x));
 
 // ─── FETCH RESULTS (returns Ergast driverIds in finishing order) ──────────────
-async function fetchJolpicaResults(round: number, isSprint: boolean): Promise<string[] | null> {
+async function fetchJolpicaResults(season: number, round: number, isSprint: boolean): Promise<string[] | null> {
   try {
-    const endpoint = `${JOLPICA}/2026/${round}/${isSprint ? 'sprint' : 'results'}.json?limit=40`;
+    const endpoint = `${JOLPICA}/${season}/${round}/${isSprint ? 'sprint' : 'results'}.json?limit=40`;
     const res = await fetch(endpoint, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const data = await res.json();
@@ -104,9 +79,9 @@ async function fetchJolpicaResults(round: number, isSprint: boolean): Promise<st
   }
 }
 
-async function fetchOpenF1Results(location: string, sessionType: 'Race' | 'Sprint'): Promise<string[] | null> {
+async function fetchOpenF1Results(season: number, location: string, sessionType: 'Race' | 'Sprint'): Promise<string[] | null> {
   try {
-    const mRes = await fetch(`${OPENF1}/meetings?year=2026&location=${encodeURIComponent(location)}`, { signal: AbortSignal.timeout(10000) });
+    const mRes = await fetch(`${OPENF1}/meetings?year=${season}&location=${encodeURIComponent(location)}`, { signal: AbortSignal.timeout(10000) });
     if (!mRes.ok) return null;
     const meetingKey = (await mRes.json())?.[0]?.meeting_key;
     if (!meetingKey) return null;
@@ -144,9 +119,10 @@ Deno.serve(async (req: Request) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const now = Date.now();
   const details: string[] = [];
+  const { season, races } = await loadSeason();
 
-  const finished = CALENDAR_2026.filter(r => {
-    const since = now - new Date(r.raceDate).getTime();
+  const finished = races.filter((r: any) => {
+    const since = now - new Date(r.date).getTime();
     return since >= 3 * 3600 * 1000 && (all || since <= RECENT_MS);
   });
 
@@ -163,17 +139,17 @@ Deno.serve(async (req: Request) => {
           .eq('circuit_id', race.circuitId)
           .eq('round', race.round)
           .eq('pred_type', predType);
-        if (error) { details.push(`DB error ${race.location} ${label}: ${error.message}`); continue; }
+        if (error) { details.push(`DB error ${race.of1} ${label}: ${error.message}`); continue; }
         if (!preds?.length) continue;
 
         // Official classification first (Jolpica); OpenF1 only for a race in the last
         // week that Jolpica hasn't published yet; a stored list only if both fail.
-        let actual: string[] | null = await fetchJolpicaResults(race.round, isSprint);
-        if (!actual && now - new Date(race.raceDate).getTime() < 7 * 86400 * 1000) {
-          actual = await fetchOpenF1Results(race.location, label as 'Race' | 'Sprint');
+        let actual: string[] | null = await fetchJolpicaResults(season, race.round, isSprint);
+        if (!actual && now - new Date(race.date).getTime() < 7 * 86400 * 1000) {
+          actual = await fetchOpenF1Results(season, race.of1, label as 'Race' | 'Sprint');
         }
         if (!actual) actual = preds.find((p: any) => isIdList(p.actual_results))?.actual_results ?? null;
-        if (!actual?.length) { details.push(`Results not yet available: ${race.location} ${label}`); continue; }
+        if (!actual?.length) { details.push(`Results not yet available: ${race.of1} ${label}`); continue; }
 
         const actualAbbrs = actual.map(toAbbr);
         let updated = 0;
@@ -185,12 +161,12 @@ Deno.serve(async (req: Request) => {
           if (acc === p.accuracy && sameActual) continue;
           const { error: upErr } = await supabase.from('predictions')
             .update({ actual_results: actual, accuracy: acc }).eq('id', p.id);
-          if (upErr) details.push(`Update failed ${race.location} ${label} #${p.id}: ${upErr.message}`);
+          if (upErr) details.push(`Update failed ${race.of1} ${label} #${p.id}: ${upErr.message}`);
           else updated++;
         }
-        if (updated) details.push(`Scored ${race.location} ${label}: ${updated} snapshot(s) updated`);
+        if (updated) details.push(`Scored ${race.of1} ${label}: ${updated} snapshot(s) updated`);
       } catch (e: any) {
-        details.push(`Error ${race.location} ${label}: ${e.message}`);
+        details.push(`Error ${race.of1} ${label}: ${e.message}`);
       }
     }
   }

@@ -61,7 +61,7 @@ function sessionRow(r) {
   return {
     circuit_id:   need(/^[a-z_]{3,20}$/.test(r.circuit_id || '') ? r.circuit_id : undefined, 'circuit_id'),
     round:        need(int(Number(r.round), 1, 30), 'round'),
-    year:         2026,
+    year:         int(Number(r.year), 2024, 2100) ?? new Date().getUTCFullYear(),
     session_name: need(SESSION.test(r.session_name || '') ? r.session_name : undefined, 'session_name'),
     grid_data: grid.map(g => clean({
       pos:        need(int(Number(g?.pos), 1, 30), 'grid.pos'),

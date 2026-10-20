@@ -7,6 +7,7 @@
 // Triggered automatically by the live bridge when the race ends,
 // or manually with the CRON_SECRET key (?key=…, optional &circuit=<id> for an older race).
 import { unsubToken } from './_guard.js';
+import { loadSeason, FALLBACK_SEASON } from '../season.js';
 
 export const config = { maxDuration: 30 };
 
@@ -45,32 +46,10 @@ function normalizeTeam(name='') {
   );
 }
 
-// 2026 calendar — used for circuit name/flag and the "next race" teaser.
-const CALENDAR = [
-  {round:1, id:'albert_park',  gp:'Australian Grand Prix',   flag:'🇦🇺', venue:'Albert Park Circuit',            date:'2026-03-08'},
-  {round:2, id:'shanghai',     gp:'Chinese Grand Prix',      flag:'🇨🇳', venue:'Shanghai International Circuit',  date:'2026-03-15'},
-  {round:3, id:'suzuka',       gp:'Japanese Grand Prix',     flag:'🇯🇵', venue:'Suzuka Circuit',                 date:'2026-03-29'},
-  {round:4, id:'miami',        gp:'Miami Grand Prix',        flag:'🇺🇸', venue:'Miami International Autodrome',   date:'2026-05-03'},
-  {round:5, id:'villeneuve',   gp:'Canadian Grand Prix',     flag:'🇨🇦', venue:'Circuit Gilles Villeneuve',      date:'2026-05-24'},
-  {round:6, id:'monaco',       gp:'Monaco Grand Prix',       flag:'🇲🇨', venue:'Circuit de Monaco',              date:'2026-06-07'},
-  {round:7, id:'catalunya',    gp:'Spanish Grand Prix',      flag:'🇪🇸', venue:'Circuit de Barcelona-Catalunya', date:'2026-06-14'},
-  {round:8, id:'red_bull_ring',gp:'Austrian Grand Prix',     flag:'🇦🇹', venue:'Red Bull Ring',                  date:'2026-06-28'},
-  {round:9, id:'silverstone',  gp:'British Grand Prix',      flag:'🇬🇧', venue:'Silverstone Circuit',            date:'2026-07-05'},
-  {round:10,id:'spa',          gp:'Belgian Grand Prix',      flag:'🇧🇪', venue:'Circuit de Spa-Francorchamps',   date:'2026-07-19'},
-  {round:11,id:'hungaroring',  gp:'Hungarian Grand Prix',    flag:'🇭🇺', venue:'Hungaroring',                    date:'2026-07-26'},
-  {round:12,id:'zandvoort',    gp:'Dutch Grand Prix',        flag:'🇳🇱', venue:'Circuit Zandvoort',              date:'2026-08-23'},
-  {round:13,id:'monza',        gp:'Italian Grand Prix',      flag:'🇮🇹', venue:'Autodromo Nazionale Monza',      date:'2026-09-06'},
-  {round:14,id:'ifema_madrid', gp:'Madrid Grand Prix',       flag:'🇪🇸', venue:'IFEMA Madrid Street Circuit',    date:'2026-09-13'},
-  {round:15,id:'baku',         gp:'Azerbaijan Grand Prix',   flag:'🇦🇿', venue:'Baku City Circuit',              date:'2026-09-26'},
-  {round:16,id:'sepang',       gp:'Bahrain Grand Prix (Malaysia)', flag:'🇲🇾', venue:'Sepang International Circuit', date:'2026-10-04'},
-  {round:17,id:'marina_bay',   gp:'Singapore Grand Prix',    flag:'🇸🇬', venue:'Marina Bay Street Circuit',      date:'2026-10-11'},
-  {round:18,id:'americas',     gp:'United States Grand Prix', flag:'🇺🇸', venue:'Circuit of the Americas',        date:'2026-10-25'},
-  {round:19,id:'rodriguez',    gp:'Mexico City Grand Prix',  flag:'🇲🇽', venue:'Autodromo Hermanos Rodriguez',   date:'2026-11-01'},
-  {round:20,id:'interlagos',   gp:'São Paulo Grand Prix',    flag:'🇧🇷', venue:'Autódromo José Carlos Pace',     date:'2026-11-08'},
-  {round:21,id:'las_vegas',    gp:'Las Vegas Grand Prix',    flag:'🇺🇸', venue:'Las Vegas Strip Circuit',        date:'2026-11-22'},
-  {round:22,id:'losail',       gp:'Qatar Grand Prix',        flag:'🇶🇦', venue:'Lusail International Circuit',    date:'2026-11-29'},
-  {round:23,id:'yas_marina',   gp:'Abu Dhabi Grand Prix',    flag:'🇦🇪', venue:'Yas Marina Circuit',             date:'2026-12-06'},
-];
+// The season calendar (shared season.js) — circuit name/flag and the "next race" teaser.
+// Filled at the start of each request.
+let CALENDAR = [];
+let SEASON = FALLBACK_SEASON;
 const metaForCircuit = (id) => CALENDAR.find(c => c.id === id) || null;
 const metaForRound   = (r)  => CALENDAR.find(c => Number(c.round) === Number(r)) || null;
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}); } catch { return ''; } };
@@ -116,7 +95,7 @@ function buildEmailHtml({ meta, round, grid, prediction, accuracy, nextRace, ros
       <tr><td style="padding:26px 28px 22px">
         <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%"><tr>
           <td style="font-size:12px;color:#E10600;letter-spacing:3px;font-weight:800">F1&nbsp;PREDICTOR</td>
-          <td style="font-size:11px;color:#777;letter-spacing:2px;text-align:right">2026&nbsp;SEASON</td>
+          <td style="font-size:11px;color:#777;letter-spacing:2px;text-align:right">${meta?.season || SEASON}&nbsp;SEASON</td>
         </tr></table>
         <div style="font-size:11px;color:#888;letter-spacing:4px;text-transform:uppercase;margin-top:18px">Race Report</div>
         <table cellpadding="0" cellspacing="0" role="presentation" style="margin-top:8px"><tr>
@@ -279,6 +258,9 @@ export default async function handler(req, res) {
 
   try {
     const sbHeaders = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
+    const cal = await loadSeason();
+    SEASON = cal.season;
+    CALENDAR = cal.races.map(r => ({ round: r.round, id: r.circuitId, gp: r.name, flag: r.flag, venue: r.circuit, date: r.date, season: r.season }));
 
     // Which race: the most recent finished one on the calendar (or ?circuit=<id>).
     const today = new Date().toISOString().slice(0, 10);
@@ -288,7 +270,7 @@ export default async function handler(req, res) {
     if (!meta) return res.status(404).json({ error: 'Unknown race' });
 
     // Its result: newest Race row for that circuit with a usable grid.
-    const sessR = await fetch(`${SB_URL}/rest/v1/sessions?session_name=eq.Race&year=eq.2026&circuit_id=eq.${meta.id}&order=fetched_at.desc&limit=5`, { headers: sbHeaders });
+    const sessR = await fetch(`${SB_URL}/rest/v1/sessions?session_name=eq.Race&year=eq.${SEASON}&circuit_id=eq.${meta.id}&order=fetched_at.desc&limit=5`, { headers: sbHeaders });
     const sess = ((await sessR.json()) || []).find(r => (r.grid_data || []).filter(g => g.abbr && g.pos).length >= 10);
     if (!sess) return res.status(404).json({ error: `No race result saved yet for ${meta.gp}` });
     const grid = (sess.grid_data || []).filter(g => g.abbr && g.pos).sort((x, y) => x.pos - y.pos);
@@ -306,7 +288,7 @@ export default async function handler(req, res) {
     // Driver names + teams from the official standings.
     const roster = {};
     try {
-      const js = await fetch('https://api.jolpi.ca/ergast/f1/2026/driverstandings.json?limit=40', { signal: AbortSignal.timeout(6000) });
+      const js = await fetch(`https://api.jolpi.ca/ergast/f1/${SEASON}/driverstandings.json?limit=40`, { signal: AbortSignal.timeout(6000) });
       (await js.json())?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings?.forEach(e => {
         if (e.Driver?.code) roster[e.Driver.code] = { name: `${e.Driver.givenName} ${e.Driver.familyName}`, team: e.Constructors?.[0]?.name || '' };
       });

@@ -5,111 +5,12 @@
  */
 import webpush from 'web-push';
 import { generateJSON } from './_ai.js';
+import { loadSeason, FALLBACK_SEASON } from '../season.js';
 
-/* ───────── 2026 RACE SCHEDULE ─────────
-   Synced with frontend BASE_UPCOMING — includes
-   circuit_id, round, circuit name (for prediction prompts),
-   sprint flag, and UTC session times.
-*/
-const RACES = [
-  // Sprint weekend
-  { round:5, circuitId:'villeneuve', name:'Canadian Grand Prix',
-    circuit:'Circuit Gilles Villeneuve', type:'semi-street', sprint:true,
-    date:'2026-05-24', qualiDate:'2026-05-23',
-    raceUTC:'20:00', qualiUTC:'20:00', lat:45.5048, lon:-73.5224,
-    sprintQualiDate:'2026-05-22', sprintQualiUTC:'20:30',
-    sprintDate:'2026-05-23', sprintUTC:'16:00' },
-  { round:6, circuitId:'monaco', name:'Monaco Grand Prix',
-    circuit:'Circuit de Monaco', type:'street',
-    date:'2026-06-07', qualiDate:'2026-06-06',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:43.7347, lon:7.4206 },
-  { round:7, circuitId:'catalunya', name:'Spanish Grand Prix',
-    circuit:'Circuit de Barcelona-Catalunya', type:'balanced',
-    date:'2026-06-14', qualiDate:'2026-06-13',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:41.5699, lon:2.2611 },
-  { round:8, circuitId:'red_bull_ring', name:'Austrian Grand Prix',
-    circuit:'Red Bull Ring', type:'power',
-    date:'2026-06-28', qualiDate:'2026-06-27',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:47.2197, lon:14.7647 },
-  // Sprint weekend
-  { round:9, circuitId:'silverstone', name:'British Grand Prix',
-    circuit:'Silverstone Circuit', type:'balanced', sprint:true,
-    date:'2026-07-05', qualiDate:'2026-07-04',
-    raceUTC:'14:00', qualiUTC:'15:00', lat:52.0786, lon:-1.0169,
-    sprintQualiDate:'2026-07-03', sprintQualiUTC:'15:30',
-    sprintDate:'2026-07-04', sprintUTC:'11:00' },
-  { round:10, circuitId:'spa', name:'Belgian Grand Prix',
-    circuit:'Circuit de Spa-Francorchamps', type:'power',
-    date:'2026-07-19', qualiDate:'2026-07-18',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:50.4372, lon:5.9714 },
-  { round:11, circuitId:'hungaroring', name:'Hungarian Grand Prix',
-    circuit:'Hungaroring', type:'technical',
-    date:'2026-07-26', qualiDate:'2026-07-25',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:47.5789, lon:19.2486 },
-  // Sprint weekend
-  { round:12, circuitId:'zandvoort', name:'Dutch Grand Prix',
-    circuit:'Circuit Zandvoort', type:'technical', sprint:true,
-    date:'2026-08-23', qualiDate:'2026-08-22',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:52.3888, lon:4.5409,
-    sprintQualiDate:'2026-08-21', sprintQualiUTC:'14:30',
-    sprintDate:'2026-08-22', sprintUTC:'10:00' },
-  { round:13, circuitId:'monza', name:'Italian Grand Prix',
-    circuit:'Autodromo Nazionale Monza', type:'power',
-    date:'2026-09-06', qualiDate:'2026-09-05',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:45.6156, lon:9.2811 },
-  { round:14, circuitId:'ifema_madrid', name:'Madrid Grand Prix',
-    circuit:'IFEMA Madrid Street Circuit', type:'street',
-    date:'2026-09-13', qualiDate:'2026-09-12',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:40.4641, lon:-3.6166 },
-  { round:15, circuitId:'baku', name:'Azerbaijan Grand Prix',
-    circuit:'Baku City Circuit', type:'street',
-    date:'2026-09-26', qualiDate:'2026-09-25',
-    raceUTC:'11:00', qualiUTC:'12:00', lat:40.3724, lon:49.8533 },
-  { round:16, circuitId:'sepang', name:'Bahrain Grand Prix (Malaysia)',
-    circuit:'Sepang International Circuit', type:'power',
-    date:'2026-10-04', qualiDate:'2026-10-03',
-    raceUTC:'07:00', qualiUTC:'08:00', lat:2.7608, lon:101.7380 },
-  // Sprint weekend
-  { round:17, circuitId:'marina_bay', name:'Singapore Grand Prix',
-    circuit:'Marina Bay Street Circuit', type:'street', sprint:true,
-    date:'2026-10-11', qualiDate:'2026-10-10',
-    raceUTC:'12:00', qualiUTC:'13:00', lat:1.2914, lon:103.8640,
-    sprintQualiDate:'2026-10-09', sprintQualiUTC:'12:30',
-    sprintDate:'2026-10-10', sprintUTC:'09:00' },
-  { round:18, circuitId:'americas', name:'United States Grand Prix',
-    circuit:'Circuit of the Americas', type:'balanced',
-    date:'2026-10-25', qualiDate:'2026-10-24',
-    raceUTC:'20:00', qualiUTC:'21:00', lat:30.1328, lon:-97.6411 },
-  { round:19, circuitId:'rodriguez', name:'Mexico City Grand Prix',
-    circuit:'Autodromo Hermanos Rodriguez', type:'technical',
-    date:'2026-11-01', qualiDate:'2026-10-31',
-    raceUTC:'20:00', qualiUTC:'21:00', lat:19.4042, lon:-99.0907 },
-  { round:20, circuitId:'interlagos', name:'São Paulo Grand Prix',
-    circuit:'Autodromo Jose Carlos Pace', type:'balanced',
-    date:'2026-11-08', qualiDate:'2026-11-07',
-    raceUTC:'17:00', qualiUTC:'18:00', lat:-23.7036, lon:-46.6997 },
-  { round:21, circuitId:'las_vegas', name:'Las Vegas Grand Prix',
-    circuit:'Las Vegas Strip Circuit', type:'power',
-    date:'2026-11-22', qualiDate:'2026-11-21',
-    raceUTC:'04:00', qualiUTC:'04:00', lat:36.1699, lon:-115.1398 },
-  { round:22, circuitId:'losail', name:'Qatar Grand Prix',
-    circuit:'Lusail International Circuit', type:'power',
-    date:'2026-11-29', qualiDate:'2026-11-28',
-    raceUTC:'16:00', qualiUTC:'18:00', lat:25.4900, lon:51.4542 },
-  { round:23, circuitId:'yas_marina', name:'Abu Dhabi Grand Prix',
-    circuit:'Yas Marina Circuit', type:'technical',
-    date:'2026-12-06', qualiDate:'2026-12-05',
-    raceUTC:'13:00', qualiUTC:'14:00', lat:24.4672, lon:54.6031 },
-];
-
-// Map our circuitId → exact OpenF1 "location" value (2026)
-const OF1_LOC = {
-  villeneuve:'Montréal', monaco:'Monte Carlo', catalunya:'Barcelona', red_bull_ring:'Spielberg',
-  silverstone:'Silverstone', spa:'Spa-Francorchamps', hungaroring:'Budapest', zandvoort:'Zandvoort',
-  monza:'Monza', ifema_madrid:'Madrid', baku:'Baku', sepang:'Kuala Lumpur', marina_bay:'Marina Bay',
-  americas:'Austin', rodriguez:'Mexico City', interlagos:'São Paulo', las_vegas:'Las Vegas',
-  losail:'Lusail', yas_marina:'Yas Marina',
-};
+/* The season calendar (rounds, session times, OpenF1 locations) comes from the
+   shared season.js, which reads the official schedule. Set per run in the handler. */
+let RACES = [];
+let SEASON = FALLBACK_SEASON;
 
 // Driver list + team mapping. Points/order are refreshed from the official
 // Jolpica standings on every run (loadLiveStandings); these values are only the fallback.
@@ -144,7 +45,7 @@ let STANDINGS_LABEL = 'fallback list';
    static list if the API is unreachable, so predictions never block on it. */
 async function loadLiveStandings() {
   try {
-    const r = await fetch('https://api.jolpi.ca/ergast/f1/2026/driverstandings.json?limit=40', { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`https://api.jolpi.ca/ergast/f1/${SEASON}/driverstandings.json?limit=40`, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return;
     const list = (await r.json())?.MRData?.StandingsTable?.StandingsLists?.[0];
     const rows = list?.DriverStandings;
@@ -195,7 +96,7 @@ async function getRainForecast(lat, lon, raceDate) {
 /* ───────── OpenF1: live race + recent practice ───────── */
 async function getLiveRaceSession() {
   try {
-    const r = await fetch('https://api.openf1.org/v1/sessions?session_type=Race&year=2026',
+    const r = await fetch(`https://api.openf1.org/v1/sessions?session_type=Race&year=${SEASON}`,
       { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const sessions = await r.json();
@@ -210,7 +111,7 @@ async function getLiveRaceSession() {
 }
 async function getRecentPracticeSession() {
   try {
-    const r = await fetch('https://api.openf1.org/v1/sessions?session_type=Practice&year=2026',
+    const r = await fetch(`https://api.openf1.org/v1/sessions?session_type=Practice&year=${SEASON}`,
       { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return null;
     const sessions = await r.json();
@@ -227,16 +128,16 @@ async function getRecentPracticeSession() {
 /* ───────── OpenF1: fetch session grid (for stage detection & prompt) ───────── */
 async function fetchOf1Grid(race) {
   try {
-    const loc = OF1_LOC[race.circuitId];
+    const loc = race.of1;
     if (!loc) return { sqGrid:[], qGrid:[], sprintDone:false, qDone:false, sqDone:false };
-    const mr = await fetch(`https://api.openf1.org/v1/meetings?year=2026&location=${encodeURIComponent(loc)}`,
+    const mr = await fetch(`https://api.openf1.org/v1/meetings?year=${SEASON}&location=${encodeURIComponent(loc)}`,
       { signal: AbortSignal.timeout(8000) });
     if (!mr.ok) return { sqGrid:[], qGrid:[], sprintDone:false, qDone:false, sqDone:false };
     const meetings = await mr.json();
     const meeting = meetings?.[0];
     if (!meeting) return { sqGrid:[], qGrid:[], sprintDone:false, qDone:false, sqDone:false };
 
-    const sr = await fetch(`https://api.openf1.org/v1/sessions?meeting_key=${meeting.meeting_key}&year=2026`,
+    const sr = await fetch(`https://api.openf1.org/v1/sessions?meeting_key=${meeting.meeting_key}&year=${SEASON}`,
       { signal: AbortSignal.timeout(8000) });
     const sessions = sr.ok ? await sr.json() : [];
 
@@ -489,6 +390,7 @@ export default async function handler(req, res) {
   // ?mode=predictions (hourly, from Supabase pg_cron): only fill in missing stage predictions
   // and retry baseline ones. The daily Vercel runs also send the time-based notifications.
   const predictionsOnly = req.query?.mode === 'predictions';
+  ({ season: SEASON, races: RACES } = await loadSeason());
   await loadLiveStandings();
 
   const today = todayUTC();

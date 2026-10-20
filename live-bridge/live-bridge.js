@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import WebSocket from 'ws';
+import { loadSeason } from '../season.js';
 import zlib from 'node:zlib';
 import http from 'node:http';
 import dotenv from 'dotenv';
@@ -77,14 +78,14 @@ const LOC_TO_CIRCUIT = {
   'Las Vegas': 'las_vegas', 'Lusail': 'losail', 'Yas Marina': 'yas_marina',
 };
 
-// 2026 F1 calendar — circuit_id → round number (must match PWA's BASE_UPCOMING.round)
-const CIRCUIT_TO_ROUND_2026 = {
-  albert_park:1, shanghai:2, suzuka:3, miami:4,
-  villeneuve:5, monaco:6, catalunya:7, red_bull_ring:8, silverstone:9,
-  spa:10, hungaroring:11, zandvoort:12, monza:13, ifema_madrid:14,
-  baku:15, sepang:16, marina_bay:17, americas:18, rodriguez:19, interlagos:20,
-  las_vegas:21, losail:22, yas_marina:23,
-};
+// circuit_id → round number, from the shared season calendar (../season.js reads the
+// official schedule). Filled at start-up and refreshed when a new session begins.
+let CIRCUIT_TO_ROUND = {};
+async function refreshCalendar() {
+  const { season, races, source } = await loadSeason();
+  CIRCUIT_TO_ROUND = Object.fromEntries(races.map(r => [r.circuitId, r.round]));
+  log(`📅 ${season} calendar: ${races.length} rounds (${source})`);
+}
 
 // ─── Step 1: SignalR Core Negotiate ─────────────────────────────────────
 // Two-step like OpenF1: (1) OPTIONS preflight to grab the AWSALBCORS sticky
@@ -183,8 +184,9 @@ function mergeFeed(feedName, data) {
   } else if (feedName === 'SessionInfo') {
     const loc = data.Meeting?.Location || data.Meeting?.Country?.Name || '';
     const circuitId = LOC_TO_CIRCUIT[loc] || loc.toLowerCase().replace(/[\s'’`]+/g, '_');
-    // Use our hardcoded calendar round, NOT F1's internal Meeting.Key (which is a different ID)
-    const round = CIRCUIT_TO_ROUND_2026[circuitId] || null;
+    // Use the calendar round, NOT F1's internal Meeting.Key (which is a different ID)
+    const round = CIRCUIT_TO_ROUND[circuitId] || null;
+    refreshCalendar().catch(() => {});
     state.session = {
       name:       data.Name || data.Type || 'Race',
       type:       data.Type || 'Race',
@@ -383,6 +385,7 @@ async function main() {
   log('   Flush interval:', FLUSH_INTERVAL_MS, 'ms');
   log('   Target:', `${SITE_URL}/api/save`);
   startLocalServer();
+  await refreshCalendar();
 
   const { connectionToken, cookie } = await negotiate();
   const ws = connect(connectionToken, cookie);

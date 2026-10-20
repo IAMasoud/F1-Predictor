@@ -4,7 +4,7 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v64';
+const CACHE = 'f1-predictor-v66';
 const STATIC = [
   '/',
   '/index.html',
@@ -12,7 +12,8 @@ const STATIC = [
   '/icons/icon-192.png',
   '/icons/icon-96.png',
   '/icons/icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&family=Rajdhani:wght@400;500;600;700&display=swap'
+  '/season.js',
+  'https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,700;1,800&family=Barlow:wght@400;500;600;700&display=swap'
 ];
 
 self.addEventListener('install', e => {
