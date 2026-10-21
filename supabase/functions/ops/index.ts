@@ -159,6 +159,12 @@ async function scan() {
     if (api.r.status !== 401) return { ok: false, detail: `the admin API answered ${api.r.status} without a sign-in` };
     return { detail: 'locked without a sign-in' };
   });
+  await check('Email service (Brevo) accepts our key', async () => {
+    const { r } = await timed(`${SITE}/api/send-newsletter?check=1`, { headers: { Authorization: `Bearer ${CRON_SECRET}` } }, 15000);
+    const d = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, detail: d?.error || `the check answered ${r.status}` };
+    return d?.ok ? { detail: 'race reports and team emails can go out' } : { ok: false, detail: d?.error || 'no answer' };
+  });
   await check('OpenF1 helper answers', async () => {
     const { r } = await timed(`${SITE}/api/of1?url=${encodeURIComponent(`https://api.openf1.org/v1/meetings?year=${season}`)}`, {}, 20000);
     if (!r.ok) return { ok: false, detail: `answered ${r.status}` };

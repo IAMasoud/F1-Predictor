@@ -798,6 +798,7 @@ function reviewDialog(a){
   const item = (k, v) => v == null || v === '' ? '' : `<div class="tr" style="align-items:flex-start;min-height:28px"><span class="k" style="width:150px;color:var(--ink-3)">${k}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere">${v}</span></div>`;
   const link = u => u ? `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : '';
   const block = (title, rows) => { const inner = rows.join(''); return inner ? `<h3 style="font:600 14px Barlow;margin:16px 0 4px">${title}</h3>${inner}` : ''; };
+  const mailFailed = a.status !== 'pending' && /^failed/.test(a.email_status || '');
   const dob = a.date_of_birth ? `${new Date(`${a.date_of_birth}T12:00:00Z`).toLocaleDateString(undefined, { day:'numeric', month:'long', year:'numeric' })} (${ageOf(a.date_of_birth)})` : '';
   body.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div style="flex:1;min-width:0"><h2 style="font:italic 800 28px/1.05 'Barlow Condensed';text-transform:uppercase">${esc(a.full_name)}</h2>
@@ -814,7 +815,8 @@ function reviewDialog(a){
       <div class="msg" id="rvMsg" role="status"></div>
       <div class="row-end"><button class="btn" id="rvClose">Close</button><button class="btn" id="rvReject">Reject</button><button class="btn red" id="rvAccept">Accept</button></div>`
     : `<p class="note" style="margin-top:14px">${a.status === 'accepted' ? 'Accepted' : 'Rejected'} ${ago(a.decided_at)} · email ${esc(a.email_status || 'not sent')}${a.decision_note ? ` · your note: “${esc(a.decision_note)}”` : ''}</p>
-      <div class="row-end"><button class="btn" id="rvClose">Close</button><button class="btn" id="rvDelete">Delete this application</button></div>`}`;
+      ${mailFailed ? `<div class="msg err" id="rvMsg" role="status">The email didn't reach ${esc(a.full_name.split(/\s+/)[0])}: ${esc(a.email_status.replace(/^failed:\s*/, ''))}</div>` : ''}
+      <div class="row-end"><button class="btn" id="rvClose">Close</button><button class="btn" id="rvDelete">Delete this application</button>${mailFailed ? '<button class="btn red" id="rvResend">Send the email again</button>' : ''}</div>`}`;
   if(!dlg.open) dlg.showModal();
   $('rvClose').onclick = () => dlg.close();
   if($('rvCv')) $('rvCv').onclick = async () => {
@@ -836,6 +838,16 @@ function reviewDialog(a){
   };
   if($('rvAccept')) $('rvAccept').onclick = () => decide('accept');
   if($('rvReject')) $('rvReject').onclick = () => decide('reject');
+  if($('rvResend')) $('rvResend').onclick = async () => {
+    if(!confirm(`Send the ${a.status === 'accepted' ? '"welcome to the team"' : '"sorry, we couldn\'t accept you"'} email to ${a.full_name} (${a.email}) again?`)) return;
+    $('rvResend').disabled = true;
+    const m = $('rvMsg'); m.className = 'msg'; m.textContent = 'Sending the email…';
+    try{
+      const r = await api({ action:'member_resend' }, { id: a.id });
+      if(r.email === 'sent'){ dlg.close(); toast(`Email sent to ${a.full_name.split(/\s+/)[0]}.`); go('members'); }
+      else { m.className = 'msg err'; m.textContent = `It still didn't go out (${r.email.replace(/^failed:\s*/, '')}).`; $('rvResend').disabled = false; }
+    }catch(err){ m.className = 'msg err'; m.textContent = err.message; $('rvResend').disabled = false; }
+  };
   if($('rvDelete')) $('rvDelete').onclick = async () => {
     if(!confirm(`Delete ${a.full_name}'s application and CV for good? ${a.status === 'accepted' ? 'They stay an admin; remove them on the Admins page if needed.' : ''}`)) return;
     try{ await api({ action:'member_delete' }, { id: a.id }); dlg.close(); toast('Application deleted'); go('members'); }

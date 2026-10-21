@@ -225,7 +225,13 @@ async function sendMail({ to, subject, html, text }) {
       replyTo: { name: OWNER_DEFAULTS.name, email: OWNER_EMAIL }, to: [{ email: to }], subject, htmlContent: html, textContent: text }),
     signal: AbortSignal.timeout(10000),
   });
-  if (!r.ok) throw new Error(`The email service answered ${r.status}`);
+  if (!r.ok) throw new Error(brevoError(r.status, (await r.json().catch(() => ({})))?.message));
+}
+/* Brevo's refusal, in words the owner can act on. */
+function brevoError(status, message) {
+  const m = String(message || '').trim();
+  if (/unrecognised IP/i.test(m)) return `Brevo blocked our server's IP address (${status})`;
+  return m ? `Brevo: ${m.slice(0, 80)} (${status})` : `The email service answered ${status}`;
 }
 async function signedFileUrl(bucket, path, seconds, download) {
   const key = process.env.SB_SERVICE_KEY;
@@ -420,7 +426,7 @@ export default async function handler(req, res) {
       }
 
       // Applications (owner only): open the CV, accept or reject (sends the email), delete.
-      if (action === 'member_cv' || action === 'member_decide' || action === 'member_delete') {
+      if (action === 'member_cv' || action === 'member_decide' || action === 'member_delete' || action === 'member_resend') {
         if (!me.owner) return ownerOnly();
         if (!UUID_RE.test(String(body.id || ''))) return res.status(400).json({ error: 'Bad id' });
         const app = (await json(`member_applications?id=eq.${body.id}&select=*`))?.[0];
@@ -434,6 +440,15 @@ export default async function handler(req, res) {
           if (app.cv_path) await removeFile('applications', app.cv_path);
           await json(`member_applications?id=eq.${app.id}`, { method: 'DELETE', prefer: 'return=minimal' });
           return res.json({ ok: true });
+        }
+        if (action === 'member_resend') {
+          // Only when the owner asks: send the same answer email again for a decided application.
+          if (app.status !== 'accepted' && app.status !== 'rejected') return res.status(409).json({ error: 'This application has no answer yet' });
+          let email_status = 'sent';
+          try { await sendMail({ to: app.email, ...decisionEmail({ accepted: app.status === 'accepted', name: app.full_name, role: app.role, note: app.decision_note }) }); }
+          catch (e) { email_status = `failed: ${e.message}`.slice(0, 120); }
+          await json(`member_applications?id=eq.${app.id}`, { method: 'PATCH', prefer: 'return=minimal', body: { email_status } });
+          return res.json({ ok: true, email: email_status });
         }
         const decision = body.decision === 'accept' ? 'accepted' : body.decision === 'reject' ? 'rejected' : '';
         if (!decision) return res.status(400).json({ error: 'Accept or reject?' });

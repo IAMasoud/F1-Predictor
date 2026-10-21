@@ -4,6 +4,7 @@
  * Canary: F1PRED-AM-2026-9f3c2a7b4e
  */
 // The race report email, sent to subscribers through Brevo. Needs the CRON_SECRET.
+//   ?check=1              ask Brevo whether it accepts our key; sends nothing (ops scan)
 //   ?preview=1            build it and return the HTML (admin page)
 //   ?test=1  {to}         send it to one address only, never logged (admin page)
 //   (no flag)             send to every subscriber; refuses a race already sent unless &force=1
@@ -180,6 +181,16 @@ export default async function handler(req, res) {
   const FROM_NAME = process.env.NEWSLETTER_FROM_NAME || 'F1 Predictor';
   if (!SB_KEY) return res.status(500).json({ error: 'SB_SERVICE_KEY not set' });
   if (!preview && !BREVO_KEY) return res.status(500).json({ error: 'BREVO_API_KEY not set' });
+
+  if (req.query?.check === '1') {
+    try {
+      const r = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': BREVO_KEY, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) return res.status(200).json({ ok: true });
+      const m = String((await r.json().catch(() => ({})))?.message || '').trim();
+      const error = /unrecognised IP/i.test(m) ? `Brevo blocked our server's IP address (${r.status})` : m ? `Brevo: ${m.slice(0, 80)} (${r.status})` : `Brevo answered ${r.status}`;
+      return res.status(200).json({ ok: false, error });
+    } catch (e) { return res.status(200).json({ ok: false, error: `Brevo did not answer (${e.name === 'TimeoutError' ? 'timed out' : e.message})` }); }
+  }
 
   const sbH = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
   const sbGet = async path => { const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: sbH, signal: AbortSignal.timeout(8000) }); return r.ok ? r.json() : []; };
