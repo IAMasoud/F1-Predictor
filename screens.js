@@ -165,14 +165,17 @@ renderLightsOut = function(force){
   if(sp) sp.hidden = !sprint || !['beforeSprintQ', 'afterSprintQ'].includes(current);
 
   const sig = JSON.stringify([race.circuitId, race.round, LO.stage, snap?.id, snap?.created_at, grid ? Object.keys(grid).length : 0, have.size, current,
-    (qualifyingGrid || []).length, (sprintQualiGrid || []).length, wx.length && wx[wx.length - 1]?.date]);
+    (qualifyingGrid || []).length, (sprintQualiGrid || []).length, wx.length && wx[wx.length - 1]?.date, predictionsLoaded]);
   if(sig === LO.sig && !force) return;
   LO.sig = sig;
 
   /* the call */
   const callEl = $('loCallBody');
   callEl.classList.remove('swap');
-  if(!snap){
+  if(!snap && !predictionsLoaded){
+    // The saved calls are still on their way from the cloud: don't say there are none.
+    callEl.innerHTML = `<div class="empty v2" style="margin-top:16px"><b>Loading the AI’s calls…</b></div>`;
+  } else if(!snap){
     const after = current === 'final';
     callEl.innerHTML = `<div class="empty v2" style="margin-top:16px"><b>${after ? 'No call was saved before this race.' : `No call yet for ${esc(stageLabel(LO.stage).toLowerCase())}.`}</b>
       <p>${after ? 'Calls made after a race never count.' : 'The AI makes one by itself after each session. You can also ask for it now in the Order tab.'}</p></div>`;

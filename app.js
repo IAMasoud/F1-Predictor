@@ -22,6 +22,7 @@ const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': 'Bearer '+SB_KEY, 'Conte
 
 // In-memory cache so buildPrompt (sync) can read past predictions
 let cachedPredictions = [];
+let predictionsLoaded = false;  // true once the first cloud fetch has answered (or failed)
 
 /* Escape text before it goes into innerHTML: data from the database, the AI or
    other sites must never be able to add markup or scripts to the page.
@@ -53,6 +54,7 @@ async function refreshPredictionsCache(){
   // Pull up to 200 snapshots — enough to cover full season × stages × race/sprint variants
   // Post-race ('final') snapshots were made after the result was known, so they never count.
   cachedPredictions = (await sbGet('predictions?select=*&stage=neq.final&order=created_at.desc&limit=200')) || [];
+  predictionsLoaded = true;
   if(cachedPredictions && cachedPredictions.length > 0){
     if(typeof unlockArchTab === 'function') unlockArchTab();
   }
@@ -135,14 +137,14 @@ let SEASON_RACES = {};   // circuitId → the season calendar's race (all sessio
 const BASE_UPCOMING = [
   {round:5, name:'Canadian Grand Prix',       circuitId:'villeneuve',   country:'Canada',      date:'2026-05-24', circuit:'Circuit Gilles Villeneuve',        type:'semi-street', sprint:true},
   {round:6, name:'Monaco Grand Prix',         circuitId:'monaco',       country:'Monaco',      date:'2026-06-07', circuit:'Circuit de Monaco',                type:'street'},
-  {round:7, name:'Spanish Grand Prix',        circuitId:'catalunya',    country:'Spain',       date:'2026-06-14', circuit:'Circuit de Barcelona-Catalunya',    type:'balanced'},
+  {round:7, name:'Barcelona Grand Prix',      circuitId:'catalunya',    country:'Spain',       date:'2026-06-14', circuit:'Circuit de Barcelona-Catalunya',    type:'balanced'},
   {round:8, name:'Austrian Grand Prix',       circuitId:'red_bull_ring',country:'Austria',     date:'2026-06-28', circuit:'Red Bull Ring',                    type:'power'},
   {round:9, name:'British Grand Prix',        circuitId:'silverstone',  country:'UK',          date:'2026-07-05', circuit:'Silverstone Circuit',              type:'balanced', sprint:true},
   {round:10,name:'Belgian Grand Prix',        circuitId:'spa',          country:'Belgium',     date:'2026-07-19', circuit:'Circuit de Spa-Francorchamps',     type:'power'},
   {round:11,name:'Hungarian Grand Prix',      circuitId:'hungaroring',  country:'Hungary',     date:'2026-07-26', circuit:'Hungaroring',                      type:'technical'},
   {round:12,name:'Dutch Grand Prix',          circuitId:'zandvoort',    country:'Netherlands', date:'2026-08-23', circuit:'Circuit Zandvoort',                type:'technical', sprint:true},
   {round:13,name:'Italian Grand Prix',        circuitId:'monza',        country:'Italy',       date:'2026-09-06', circuit:'Autodromo Nazionale Monza',        type:'power'},
-  {round:14,name:'Madrid Grand Prix',         circuitId:'ifema_madrid', country:'Spain',       date:'2026-09-13', circuit:'IFEMA Madrid Street Circuit',      type:'street'},
+  {round:14,name:'Spanish Grand Prix',        circuitId:'ifema_madrid', country:'Spain',       date:'2026-09-13', circuit:'Madring',                          type:'street'},
   {round:15,name:'Azerbaijan Grand Prix',     circuitId:'baku',         country:'Azerbaijan',  date:'2026-09-26', circuit:'Baku City Circuit',                type:'street'},
   {round:16,name:'Bahrain Grand Prix (Malaysia)', circuitId:'sepang',     country:'Malaysia',    date:'2026-10-04', circuit:'Sepang International Circuit',     type:'power'},
   {round:17,name:'Singapore Grand Prix',      circuitId:'marina_bay',   country:'Singapore',   date:'2026-10-11', circuit:'Marina Bay Street Circuit',        type:'street', sprint:true},
@@ -396,7 +398,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.72';
+const APP_VERSION = 'BETA 1.73';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -1183,7 +1185,7 @@ const CIRCUIT_DATA = {
   zandvoort:{difficulty:'High. Banked corners unique challenges. High-speed flowing layout. Very narrow — overtaking nearly impossible. Qualifying critical.',trackNotes:'Circuit Zandvoort, Netherlands. Unique banked Hugenholtz and final banking corners. Tight and narrow. Coastal weather variable. Enormous Dutch crowd.',teamHistory:'Red Bull completely dominated 2021-2023. McLaren competitive in 2024. Mercedes improving. Ferrari historically struggled with setup requirements here.',driverHistory:'Verstappen has won every Dutch GP since return — home hero. Russell won 2024. Norris competitive. Hamilton has not won here. Leclerc qualifying threat.',circuitBias:'Favours Red Bull historically but 2026 regs change this. High downforce critical. Track position once lost is nearly impossible to recover. Weather is biggest variable.'},
   monza:{difficulty:'Medium-low. Full throttle 75% of lap. Minimal downforce. Braking from 350kph into chicanes. Slipstream racing in qualifying and race.',trackNotes:'Autodromo Nazionale Monza, Italy. Fastest race of year. Minimal downforce setup. Two chicanes and Parabolica. Tifosi create electric Ferrari atmosphere.',teamHistory:'Ferrari have incredible Monza history. Mercedes dominant hybrid era. McLaren won 2021 (Ricciardo). Red Bull competitive but not as strong as high-downforce tracks.',driverHistory:'Hamilton 5 wins. Leclerc emotional 2019 win — crowd favourite here. Ricciardo 2021. Verstappen won 2022. Ferrari drivers always extra motivated at home. Sainz podium regular.',circuitBias:'Favours powerful engines, low-drag setups, brave braking. Slipstreaming in race makes predictions difficult. Safety car near guaranteed. Ferrari always dangerous at Monza.'},
   sepang:{difficulty:'Medium-high. Two very long straights joined by a slow hairpin, plus fast sweeping corners. Heavy tyre wear in the heat.',trackNotes:'Sepang International Circuit, Malaysia — hosting the 2026 Bahrain Grand Prix (Oct 2–4). First F1 race here since 2017. Hot and humid, with afternoon thunderstorms common; rain can change the race quickly.',teamHistory:'No data for current cars — F1 last raced here in 2017. Cars with strong straight-line speed and good tyre management in heat should suit it.',driverHistory:'Few current drivers have raced F1 here; most of the grid has no F1 experience at Sepang.',circuitBias:'Power + tyre management; rain risk'},
-  ifema_madrid:{difficulty:'Unknown — brand new circuit for 2026. Street circuit through IFEMA convention area of Madrid. Expected to be high difficulty.',trackNotes:'IFEMA Madrid Street Circuit — 2026 debut. No historical data. Expected tight street layout with smooth asphalt and technical sections.',teamHistory:'No historical data. Teams with strong street circuit packages expected to excel. Ferrari and Mercedes prepared most extensively.',driverHistory:'No data. Drivers with strong street circuit records (Leclerc, Verstappen, Alonso) expected to adapt quickly. Rookies disadvantaged on unknown track.',circuitBias:'Favour teams with best street circuit development and simulator preparation. First race = significantly higher uncertainty and upset probability.'},
+  ifema_madrid:{difficulty:'Unknown — brand new circuit for 2026. Street circuit through IFEMA convention area of Madrid. Expected to be high difficulty.',trackNotes:'Madring, a street circuit around IFEMA Madrid — 2026 debut. No historical data. Expected tight street layout with smooth asphalt and technical sections.',teamHistory:'No historical data. Teams with strong street circuit packages expected to excel. Ferrari and Mercedes prepared most extensively.',driverHistory:'No data. Drivers with strong street circuit records (Leclerc, Verstappen, Alonso) expected to adapt quickly. Rookies disadvantaged on unknown track.',circuitBias:'Favour teams with best street circuit development and simulator preparation. First race = significantly higher uncertainty and upset probability.'},
   baku:{difficulty:'Extreme. 2.2km straight combined with incredibly narrow old city section (7.6m wide). Highest crash probability on calendar. Mechanical failures from kerb strikes common.',trackNotes:'Baku City Circuit, Azerbaijan. Ultra-high-speed straight plus medieval city section. Heavy braking. Safety car probability near 100%.',teamHistory:'Red Bull dominant 2018-2023. Ferrari very competitive — power unit excels on long straight. Mercedes struggled with instability here. McLaren improving.',driverHistory:'Leclerc has pole multiple times — exceptionally fast in Baku qualifying. Perez won multiple times — his best circuit. Verstappen won 2021. Safety cars create dramatic result changes. Sainz podium regular.',circuitBias:'Favours strong power units, brave qualifying drivers, street circuit specialists. Safety cars guaranteed — tyre strategy around VSC/SC decisive. Mechanical failures common.'},
   marina_bay:{difficulty:'Extreme. Night race, humidity and heat punishing drivers physically. Long slow street circuit with zero overtaking. Fastest lap irrelevant — track position is everything.',trackNotes:'Marina Bay Street Circuit, Singapore. Night race with 1000+ LED lights. Longest race duration — often near 2-hour limit. Extreme heat and humidity. Very high physical demand.',teamHistory:'Ferrari and Red Bull dominated. Mercedes strong 2014-2018. McLaren has struggled here. Setup compromise between high downforce and thermal management is critical.',driverHistory:'Hamilton 4 wins but not dominant recently. Verstappen won 2023. Sainz won 2023. Alonso excellent physical fitness helps in heat. Leclerc strong qualifier.',circuitBias:'Favours high downforce, physically fit drivers, teams with reliable cars in high temps. Safety cars guaranteed. Grid position = finishing position in most races.'},
   americas:{difficulty:'High. Long lap with all corner types. Famous Turn 1 uphill into fast esses. Very different circuit requiring unique rhythm. Weather variable.',trackNotes:'Circuit of the Americas, Austin Texas. Most varied lap on calendar — slow hairpins, fast sweepers, elevation changes, long back straight.',teamHistory:'Red Bull dominant 2021-2023. Mercedes strong historically. Ferrari competitive. McLaren improved significantly 2024. Track suits adaptable cars.',driverHistory:'Hamilton 6 wins — loves this circuit. Verstappen dominant recently. Leclerc fast but occasional errors. Sainz podium contender. Norris strong 2024 pace.',circuitBias:'Favours well-rounded cars with good mechanical grip. Overtaking possible at T1 and T12. Long race means tyre management crucial.'},
@@ -5910,7 +5912,7 @@ function renderLightsOut(force){
   }
   const snap = loBestFor(snaps, LO.stage);
   const grid = loGridMap(LO.stage);
-  const sig = JSON.stringify([race.circuitId, race.round, LO.stage, snap?.id, snap?.created_at, !!grid, have.size, getCurrentStage(race)]);
+  const sig = JSON.stringify([race.circuitId, race.round, LO.stage, snap?.id, snap?.created_at, !!grid, have.size, getCurrentStage(race), predictionsLoaded]);
   wrap.hidden = false;
   $('loGantry').innerHTML = loGantryHTML(race);
   loRenderClock();
@@ -5921,6 +5923,11 @@ function renderLightsOut(force){
   const seg = `<div class="lo-seg" role="tablist" aria-label="Weekend stage">${stages.map(st =>
     `<button role="tab" aria-selected="${st===LO.stage}" class="${st===LO.stage?'act':''}" ${have.has(st)||st===current?'':'disabled'} onclick="loPickStage('${st}')">${LO_STAGE_SHORT[st]||stageLabel(st)}</button>`).join('')}</div>`;
 
+  if(!snap && !predictionsLoaded){
+    $('loCall').innerHTML = seg + `<div class="lo-empty"><p>Loading the AI’s calls…</p></div>`;
+    $('loTower').innerHTML = '';
+    return;
+  }
   if(!snap){
     const after = current === 'final';
     $('loCall').innerHTML = seg + `<div class="lo-empty"><p>${after ? 'No call was saved before this race.' : `No call yet for ${esc(stageLabel(LO.stage).toLowerCase())}.`}<small>${after ? 'Predictions made after a race never count.' : 'The AI makes one automatically during the weekend, or ask for it now.'}</small></p>${after ? '' : `<button onclick="runAIPrediction('race')">Generate the AI's call</button>`}</div>`;

@@ -53,8 +53,6 @@ export const CIRCUITS = {
 
 // The names this site has always used for 2026 (stored in its saved predictions).
 const NAMES_2026 = {
-  catalunya:    { name: 'Spanish Grand Prix' },
-  ifema_madrid: { name: 'Madrid Grand Prix', circuit: 'IFEMA Madrid Street Circuit' },
   sepang:       { name: 'Bahrain Grand Prix (Malaysia)' },
   interlagos:   { name: 'São Paulo Grand Prix', circuit: 'Autodromo Jose Carlos Pace' },
   rodriguez:    { circuit: 'Autodromo Hermanos Rodriguez' },
