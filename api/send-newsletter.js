@@ -187,7 +187,8 @@ export default async function handler(req, res) {
       const r = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': BREVO_KEY, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
       if (r.ok) return res.status(200).json({ ok: true });
       const m = String((await r.json().catch(() => ({})))?.message || '').trim();
-      const error = /unrecognised IP/i.test(m) ? `Brevo blocked our server's IP address (${r.status})` : m ? `Brevo: ${m.slice(0, 80)} (${r.status})` : `Brevo answered ${r.status}`;
+      const ip = (m.match(/\d{1,3}(?:\.\d{1,3}){3}/) || [])[0];
+      const error = /unrecognised IP/i.test(m) ? `Brevo blocked our server's IP address${ip ? ` ${ip}` : ''} (${r.status})` : m ? `Brevo: ${m.slice(0, 80)} (${r.status})` : `Brevo answered ${r.status}`;
       return res.status(200).json({ ok: false, error });
     } catch (e) { return res.status(200).json({ ok: false, error: `Brevo did not answer (${e.name === 'TimeoutError' ? 'timed out' : e.message})` }); }
   }

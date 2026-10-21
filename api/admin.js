@@ -230,7 +230,8 @@ async function sendMail({ to, subject, html, text }) {
 /* Brevo's refusal, in words the owner can act on. */
 function brevoError(status, message) {
   const m = String(message || '').trim();
-  if (/unrecognised IP/i.test(m)) return `Brevo blocked our server's IP address (${status})`;
+  // Name the address so it can be authorised in Brevo (Security → Authorised IPs).
+  if (/unrecognised IP/i.test(m)) { const ip = (m.match(/\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:]{6,}/i) || [])[0]; return `Brevo blocked our server's IP address${ip ? ` ${ip}` : ''} (${status})`; }
   return m ? `Brevo: ${m.slice(0, 80)} (${status})` : `The email service answered ${status}`;
 }
 async function signedFileUrl(bucket, path, seconds, download) {
