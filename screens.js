@@ -498,8 +498,9 @@ function scrCalendarRender(){
   let h = `<p class="scr-sub">${races.length} rounds · ${doneSet.size} done · times in your time zone</p>`;
   if(next){
     const ss = scrSessions(next), first = ss[0]?.start;
-    const toFirst = first ? Math.ceil((first - now) / 864e5) : 0;
-    const when = !first || now >= first ? 'this weekend' : toFirst <= 1 ? 'starts tomorrow' : `starts in ${toFirst} days`;
+    const midnight = t => new Date(t).setHours(0, 0, 0, 0);
+    const toFirst = first ? Math.round((midnight(first) - midnight(now)) / 864e5) : 0;
+    const when = !first || now >= first ? 'this weekend' : toFirst < 1 ? 'starts today' : toFirst === 1 ? 'starts tomorrow' : `starts in ${toFirst} days`;
     let range = '';
     try{ range = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).formatRange(new Date(first), new Date(Date.parse(next.date + 'T12:00:00Z'))); }
     catch(e){ range = scrLocal(Date.parse(next.date + 'T12:00:00Z'), { day: 'numeric', month: 'short' }); }
