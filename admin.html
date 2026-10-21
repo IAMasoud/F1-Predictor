@@ -679,7 +679,8 @@ const RENDER = {
             <span class="acts"><button class="btn" data-report="${r.id}">Open PDF</button></span></div>`).join('') || '<div class="empty">The first report is made next Monday, or press Make this week’s report.</div>'}
         </section>
         <section class="panel" id="delivery"><h2>Where the report goes <span>${d.canManage ? 'Only you can change this' : 'Set by the owner'}</span></h2>${deliveryHtml(dv, d.canManage)}</section>
-      </div>`;
+      </div>
+      <section class="panel" id="live"><h2>Live timing in the cloud <span>Runs on GitHub for each session, no computer needed</span></h2>${liveHtml(d.live || {}, d.canManage)}</section>`;
     wireActions(main, () => go('health'));
     main.querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => { b.disabled = true; try{ await api({ action:'log_resolve' }, { id: +b.dataset.resolve }); go('health'); }catch(e){ toast(e.message); b.disabled = false; } });
     main.querySelectorAll('[data-report]').forEach(b => b.onclick = async () => {
@@ -688,7 +689,7 @@ const RENDER = {
       catch(e){ if(w) w.close(); toast(e.message); }
       finally{ b.disabled = false; }
     });
-    if(d.canManage) wireDelivery();
+    if(d.canManage){ wireDelivery(); wireLive(); }
   },
 
   async team(main){
@@ -891,6 +892,39 @@ function wireDelivery(){
     finally{ e.target.disabled = false; }
   };
   $('clearAll').onclick = () => { if(confirm('Stop sending the weekly report anywhere?')) save({ whatsapp_phone:'', whatsapp_key:'', telegram_token:'', telegram_chat:'', discord_webhook:'' }, 'Delivery turned off'); };
+}
+
+/* Live timing in the cloud: the GitHub token (owner), the latest runs, and a manual start. */
+function liveHtml(lv, can){
+  const RUN = r => r.status !== 'completed' ? ['ai', r.status === 'in_progress' ? 'Running' : 'Starting']
+    : r.conclusion === 'success' ? ['fix', 'Done'] : r.conclusion === 'cancelled' ? ['none', 'Replaced'] : ['found', 'Failed'];
+  const runs = (lv.runs || []).map(r => { const [cls, txt] = RUN(r);
+    return `<div class="call"><div class="what"><b>${esc(r.title)}</b><small><span class="tag ${cls}">${txt}</span><span>${ago(r.created_at)}</span></small></div>
+      <span class="acts"><a class="btn" style="text-decoration:none" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></span></div>`; }).join('');
+  const refused = (lv.refused || []).map(f => `<div class="call"><div class="what"><b>${esc(f.label)}</b><small><span class="tag found">Didn’t start</span><span>${esc(f.error || '')}</span><span>· ${ago(f.dispatched_at)}</span></small></div></div>`).join('');
+  const status = `<div class="chan"><h3>${lv.token && !lv.error ? '<span class="badge">On</span><span class="note">It starts 5 to 10 minutes before every session and stops when the session is over.</span>'
+    : `<span class="badge quiet">Off</span><span class="note">${esc(lv.error || (lv.token ? '' : 'Waiting for a GitHub token.'))}</span>`}</h3></div>`;
+  const setup = can ? `
+    <div class="chan"><p class="help">${lv.token ? 'To replace the token (for example when it expires), make a new one the same way and save it here.' : 'One-time setup on GitHub, about two minutes:'}</p>
+      <ol class="steps"><li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub’s new fine-grained token page</a>. Name it <b>F1 Predictor live timing</b> and pick an expiration (up to a year).</li>
+        <li>Repository access: <b>Only select repositories</b>, then <b>F1-Predictor</b>.</li>
+        <li>Permissions: <b>Actions</b>, set to <b>Read and write</b>. Nothing else.</li>
+        <li>Generate the token, copy it and paste it here.</li></ol>
+      <div class="inline"><input class="field" id="ghToken" type="password" placeholder="github_pat_…" aria-label="GitHub token" spellcheck="false" autocomplete="off"><button class="btn" id="ghSave">Save</button>
+        <button class="btn red" id="ghStart" ${lv.token && !lv.error ? '' : 'disabled'}>Start it now</button></div></div>` : '';
+  return status + (refused || runs ? refused + runs : '<div class="empty">No runs yet. The first one starts before the next session.</div>') + setup;
+}
+function wireLive(){
+  $('ghSave').onclick = async () => {
+    const t = $('ghToken').value.trim(); if(!t) return toast('Paste the token first');
+    try{ await api({ action:'settings' }, { github_token: t }); toast('Token saved'); go('health'); }catch(e){ toast(e.message); }
+  };
+  $('ghStart').onclick = async e => {
+    if(!confirm('Start live timing now? It runs for up to 2 hours, or until the session is over.')) return;
+    e.target.disabled = true;
+    try{ const r = await api({ action:'bridge_start' }); toast(r.ok ? 'Started. It shows up below in a few seconds.' : (r.error || 'It did not start')); setTimeout(() => go('health'), 4000); }
+    catch(err){ toast(err.message); e.target.disabled = false; }
+  };
 }
 
 /* Race report: choose the race, preview it, send a test to yourself, then send it to everyone. */

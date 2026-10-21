@@ -1,6 +1,7 @@
 // Ops: the daily scan of the live site, the weekly one-page report, and delivering both
-// (Telegram, Discord, WhatsApp through CallMeBot). Called by pg_cron and the admin page with
-// the shared CRON_SECRET:  ?task=scan | weekly | test
+// (Telegram, Discord, WhatsApp through CallMeBot), plus starting live timing in the cloud.
+// Called by pg_cron and the admin page with the shared CRON_SECRET:
+//   ?task=scan | weekly | test | notify | bridge
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 // The shared season calendar (season.js in the repo root).
 import { loadSeason, sessionEndMs } from '../../../season.js';
@@ -235,6 +236,20 @@ async function scan() {
       .sort((a: any, b: any) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`);
     // One stray error (a browser extension, a dropped connection) isn't worth an alarm.
     return { ok: rows.length < 2, detail: `${rows.length} in 24 h: ${top.join('; ')}` };
+  });
+
+  await check('Live timing runs in the cloud', async () => {
+    const token = (await settings()).github_token;
+    if (!token) return { ok: false, detail: 'no GitHub token saved yet (Pit Wall, Health and reports)' };
+    const r = await github(token, `actions/workflows/${WORKFLOW}/runs?per_page=10`);
+    if (!r.ok) return { ok: false, detail: githubError(r.status, (await r.json().catch(() => ({})))?.message) };
+    // A run cancelled because a newer one took over is normal.
+    const recent = ((await r.json())?.workflow_runs || []).filter((x: Json) => now - Date.parse(x.created_at) < 3 * DAY);
+    const broken = recent.filter((x: Json) => x.status === 'completed' && !['success', 'cancelled'].includes(x.conclusion));
+    const refused = await db(`bridge_runs?status=eq.failed&dispatched_at=gte.${new Date(now - 3 * DAY).toISOString()}&select=label,error&limit=3`);
+    if (broken.length) return { ok: false, detail: `${broken.length} run${broken.length === 1 ? '' : 's'} failed: ${broken.map((x: Json) => x.display_title).join('; ').slice(0, 150)}` };
+    if (refused?.length) return { ok: false, detail: `could not start ${refused[0].label}: ${refused[0].error}` };
+    return { detail: recent.length ? `${recent.length} run${recent.length === 1 ? '' : 's'} in the last 3 days, all fine` : 'ready; it starts before each session' };
   });
 
   const failed = checks.filter(c => !c.ok);
@@ -520,6 +535,83 @@ async function weekly() {
   return { ok: true, id: row?.[0]?.id, week: `${w.start}..${w.end}`, bytes: pdf.length, delivered: delivered.sent, failed: delivered.failed };
 }
 
+/* ════════════════ live timing in the cloud ════════════════ */
+// live-bridge/ runs on GitHub Actions (.github/workflows/live-timing.yml), one run per session.
+// pg_cron calls ?task=bridge every 5 minutes on race weekends; a run is started 5 to 10 minutes
+// before each session, and once per session (a refused start is retried up to 3 times).
+const REPO = 'IAMasoud/F1-Predictor', WORKFLOW = 'live-timing.yml';
+// [key, name, date field, time field, minutes long, minutes to keep going after]
+const SESSIONS: [string, string, string, string, number, number][] = [
+  ['fp1', 'Practice 1', 'fp1Date', 'fp1UTC', 60, 20], ['fp2', 'Practice 2', 'fp2Date', 'fp2UTC', 60, 20],
+  ['fp3', 'Practice 3', 'fp3Date', 'fp3UTC', 60, 20], ['sq', 'Sprint qualifying', 'sprintQualiDate', 'sprintQualiUTC', 45, 25],
+  ['sprint', 'Sprint', 'sprintDate', 'sprintUTC', 60, 25], ['quali', 'Qualifying', 'qualiDate', 'qualiUTC', 60, 40],
+  ['race', 'Race', 'date', 'raceUTC', 120, 60],
+];
+const LEAD = 10 * 60e3, MAX_MINUTES = 230;
+
+const github = (token: string, path: string, init: RequestInit = {}) => fetch(`https://api.github.com/repos/${REPO}/${path}`, {
+  ...init,
+  headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'f1-predictor-ops', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+  signal: AbortSignal.timeout(10000),
+});
+function githubError(status: number, message?: string) {
+  if (status === 401) return 'GitHub did not accept the token (it may have expired)';
+  if (status === 403 || status === 404) return `GitHub refused (${status}): the token needs Actions read and write on F1-Predictor${message ? ` (${String(message).slice(0, 60)})` : ''}`;
+  return `GitHub answered ${status}${message ? `: ${String(message).slice(0, 80)}` : ''}`;
+}
+async function startRun(token: string, label: string, minutes: number): Promise<string | null> {
+  const r = await github(token, `actions/workflows/${WORKFLOW}/dispatches`, {
+    method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { session: label.slice(0, 80), minutes: String(minutes) } }),
+  });
+  return r.status === 204 ? null : githubError(r.status, (await r.json().catch(() => ({})))?.message);
+}
+
+async function bridge(manualMinutes?: number) {
+  const token = (await settings()).github_token;
+  if (!token) return { ok: false, error: 'No GitHub token saved yet' };
+  const now = Date.now();
+  const record = (row: Json) => db('bridge_runs?on_conflict=session_key', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: row });
+
+  // Started by hand from Pit Wall.
+  if (manualMinutes) {
+    const minutes = Math.min(Math.max(Math.round(manualMinutes), 10), MAX_MINUTES);
+    const error = await startRun(token, 'Started from Pit Wall', minutes);
+    await record({ session_key: `manual-${now}`, label: 'Started from Pit Wall', starts_at: new Date(now).toISOString(), minutes, status: error ? 'failed' : 'started', error, attempts: 1 });
+    return error ? { ok: false, error } : { ok: true, started: ['Started from Pit Wall'], minutes };
+  }
+
+  const { season, races } = await loadSeason();
+  const due: Json[] = [];
+  for (const r of races as Json[]) for (const [key, name, df, tf, len, after] of SESSIONS) {
+    if (!r[df] || !r[tf]) continue;
+    const t = Date.parse(`${r[df]}T${r[tf]}:00Z`);
+    if (now < t - LEAD || now >= t + len * 60e3) continue;
+    due.push({ key: `${season}-${r.round}-${key}`, label: `${r.name} · ${name}`, t, minutes: Math.min(MAX_MINUTES, Math.ceil((t + (len + after) * 60e3 - now) / 60e3)) });
+  }
+  const started: string[] = [], failed: string[] = [];
+  for (const d of due) {
+    const prev = (await db(`bridge_runs?session_key=eq.${d.key}&select=status,attempts`))?.[0];
+    if (prev && (prev.status === 'started' || prev.attempts >= 3)) continue;
+    const error = await startRun(token, d.label, d.minutes);
+    await record({ session_key: d.key, label: d.label, starts_at: new Date(d.t).toISOString(), minutes: d.minutes, status: error ? 'failed' : 'started', error, attempts: (prev?.attempts || 0) + 1, dispatched_at: new Date().toISOString() });
+    if (error) failed.push(`${d.label}: ${error}`); else started.push(d.label);
+  }
+  // A refused start goes to the owner once, like a scan problem; the next good start clears it.
+  if (started.length && !failed.length) {
+    await db('maintenance_log?fingerprint=eq.bridge:start&resolved=eq.false', { method: 'PATCH', prefer: 'return=minimal', body: { resolved: true, resolved_ts: new Date().toISOString() } }).catch(() => {});
+  }
+  if (failed.length) {
+    const fp = 'bridge:start';
+    const open = await db(`maintenance_log?fingerprint=eq.${fp}&resolved=eq.false&select=id`);
+    if (!open?.length) {
+      await db('maintenance_log', { method: 'POST', prefer: 'return=minimal', body: { kind: 'found', title: 'Live timing did not start', detail: failed[0].slice(0, 300), source: 'scan', fingerprint: fp } }).catch(() => {});
+      const s = await settings();
+      if (Object.values(channels(s)).some(Boolean)) await sendText(s, `F1 Predictor: live timing did not start. ${failed[0]}`, `${SITE}/admin#health`);
+    }
+  }
+  return { ok: !failed.length, due: due.length, started, failed };
+}
+
 async function testDelivery() {
   const s = await settings();
   if (!Object.values(channels(s)).some(Boolean)) return { ok: false, results: {}, error: 'Nothing is set up yet' };
@@ -534,6 +626,10 @@ Deno.serve(async (req: Request) => {
     if (task === 'scan') return reply(await scan());
     if (task === 'weekly') return reply(await weekly());
     if (task === 'test') return reply(await testDelivery());
+    if (task === 'bridge') {
+      const body = await req.json().catch(() => ({}));
+      return reply(await bridge(Number(body.minutes) || undefined));
+    }
     // A short message to the owner's channels (used by the join function for new applications).
     if (task === 'notify') {
       const body = await req.json().catch(() => ({}));

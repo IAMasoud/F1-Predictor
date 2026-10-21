@@ -93,10 +93,10 @@ async function json(path, opts) {
 const rpc = (fn, body = {}) => json(`rpc/${fn}`, { method: 'POST', body });
 
 // The ops edge function: daily scan, weekly report, delivery test.
-async function ops(task) {
+async function ops(task, payload = {}) {
   const r = await fetch(`${process.env.SB_URL}/functions/v1/ops?task=${task}`, {
     method: 'POST', headers: { Authorization: `Bearer ${process.env.CRON_SECRET}`, 'Content-Type': 'application/json' },
-    body: '{}', signal: AbortSignal.timeout(55000),
+    body: JSON.stringify(payload), signal: AbortSignal.timeout(55000),
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error || `The ops job answered ${r.status}`);
@@ -174,6 +174,8 @@ const SETTINGS = {
   discord_webhook: /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,100}$/,
   whatsapp_phone: /^\+?\d{8,15}$/,
   whatsapp_key: /^[A-Za-z0-9]{4,24}$/,
+  // Lets the ops function start live timing on GitHub Actions (Actions: read and write on this repo).
+  github_token: /^(github_pat_[A-Za-z0-9_]{50,120}|ghp_[A-Za-z0-9]{36})$/,
 };
 async function readSettings() {
   const rows = await json('app_settings?select=key,value');
@@ -186,6 +188,27 @@ function deliveryStatus(s) {
     discord: { on: !!s.discord_webhook },
     whatsapp: { on: !!(s.whatsapp_phone && s.whatsapp_key), phone: tail(s.whatsapp_phone) },
   };
+}
+
+/* Live timing in the cloud: whether GitHub accepts the token, and the latest runs there. */
+async function liveStatus(s) {
+  const out = { token: !!s.github_token, runs: [], error: null };
+  if (!s.github_token) return out;
+  try {
+    const r = await fetch('https://api.github.com/repos/IAMasoud/F1-Predictor/actions/workflows/live-timing.yml/runs?per_page=6', {
+      headers: { Authorization: `Bearer ${s.github_token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'f1-predictor-admin' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) {
+      out.error = r.status === 401 ? 'GitHub did not accept the token (it may have expired)'
+        : `GitHub refused (${r.status}): the token needs Actions read and write on F1-Predictor`;
+      return out;
+    }
+    out.runs = ((await r.json())?.workflow_runs || []).map(x => ({
+      title: String(x.display_title || '').replace(/^Live timing · /, ''), status: x.status, conclusion: x.conclusion, created_at: x.created_at, url: x.html_url,
+    }));
+  } catch { out.error = 'GitHub did not answer'; }
+  return out;
 }
 
 /* Team invites and applications (owner only). */
@@ -349,7 +372,11 @@ export default async function handler(req, res) {
           json('weekly_reports?select=id,created_at,week_start,week_end,summary,delivered&order=created_at.desc&limit=12'),
           readSettings(),
         ]);
-        return res.json({ scans, log, reports, delivery: deliveryStatus(settings), canManage: me.owner });
+        const [live, starts] = await Promise.all([
+          liveStatus(settings),
+          json('bridge_runs?status=eq.failed&select=label,error,dispatched_at&order=dispatched_at.desc&limit=3').catch(() => []),
+        ]);
+        return res.json({ scans, log, reports, delivery: deliveryStatus(settings), live: { ...live, refused: starts || [] }, canManage: me.owner });
       }
       return res.status(400).json({ error: 'Unknown view' });
     }
@@ -516,6 +543,11 @@ export default async function handler(req, res) {
         if (!chat) return res.status(404).json({ error: 'No message found yet. Open your bot in Telegram, press Start or send it any message, then try again.' });
         await json('app_settings?on_conflict=key', { method: 'POST', body: [{ key: 'telegram_chat', value: String(chat), updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' });
         return res.json({ ok: true, delivery: deliveryStatus(await readSettings()) });
+      }
+      // Live timing: start a run now (2 hours), e.g. when a session started without it.
+      if (action === 'bridge_start') {
+        if (!me.owner) return ownerOnly();
+        return res.json(await ops('bridge', { minutes: 120 }));
       }
       if (action === 'notify_test') {
         if (!me.owner) return ownerOnly();

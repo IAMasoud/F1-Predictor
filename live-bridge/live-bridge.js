@@ -7,6 +7,8 @@
 //
 //   Usage:  node live-bridge.js
 //   Setup:  copy .env.example → .env, fill in SITE_URL + BRIDGE_KEY
+//   Cloud:  .github/workflows/live-timing.yml runs it on GitHub Actions for one
+//           session at a time (RUN_MINUTES), started by the ops function.
 // ═══════════════════════════════════════════════════════════════════════
 
 import WebSocket from 'ws';
@@ -23,8 +25,16 @@ const {
   LOCAL_HTTP_PORT = 3001,
   NEWSLETTER_TRIGGER_URL,
   NEWSLETTER_TRIGGER_KEY,
+  RUN_MINUTES,
+  DRY_RUN = 'false',
   DEBUG = 'false',
 } = process.env;
+
+// With RUN_MINUTES set (the cloud run) the bridge covers one session: it stops a few minutes
+// after F1 marks the session over, or after RUN_MINUTES at the latest. Without it, it runs
+// until you stop it. DRY_RUN=true logs what it would save instead of saving it.
+const runMinutes = Math.min(Math.max(parseInt(RUN_MINUTES, 10) || 0, 0), 240);
+const dryRun = DRY_RUN === 'true';
 
 const debug = DEBUG === 'true';
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -52,6 +62,7 @@ const SUB_FEEDS    = [
   'TrackStatus',        // green/yellow/red/SC flags
   'LapCount',           // current lap / total laps
   'TimingAppData',      // tyre stints: compound and laps on the set
+  'SessionStatus',      // Started / Finished / Finalised / Ends (when to stop in the cloud)
 ];
 
 // ─── State ──────────────────────────────────────────────────────────────
@@ -318,6 +329,10 @@ async function flushToSupabase() {
     fetched_at:   new Date().toISOString(),
   };
 
+  if (dryRun) {
+    log('🧪 Dry run, not saved:', grid.length, 'positions →', sessionName, state.session.circuitId, '· Leader:', grid[0]?.abbr, 'lap', grid[0]?.lap);
+    return;
+  }
   try {
     // Saved through the site's validated endpoint (upserts on circuit+round+year+session).
     const r = await fetch(`${SITE_URL}/api/save`, {
@@ -398,6 +413,29 @@ function startLocalServer() {
   });
 }
 
+// ─── Stopping (cloud runs only) ────────────────────────────────────────
+// The snapshot on connect can still show the previous session's "Ends", so only a live
+// change to Finalised or Ends, after this run has seen the session start, stops the bridge.
+let sawStart = false, stopping = false;
+function onSessionStatus(status, live) {
+  if (!status) return;
+  log('🚦 Session status:', status, live ? '' : '(snapshot)');
+  if (status === 'Started') sawStart = true;
+  if (!runMinutes || !live || !sawStart) return;
+  if (status === 'Finalised') stopBridge(5 * 60000, 'the session is finalised');
+  if (status === 'Ends') stopBridge(60000, 'the session has ended');
+}
+function stopBridge(afterMs, why) {
+  if (stopping) return;
+  stopping = true;
+  log(`🏁 Stopping in ${Math.round(afterMs / 60000)} min: ${why}`);
+  setTimeout(async () => {
+    await flushToSupabase().catch(() => {});
+    log('👋 Done');
+    process.exit(0);
+  }, afterMs);
+}
+
 // ─── Main: connect and process messages ─────────────────────────────────
 async function main() {
   log('🏎  F1 Live Bridge starting…');
@@ -432,6 +470,7 @@ async function main() {
       log('📦 Initial snapshot received');
       Object.entries(m.result).forEach(([feed, data]) => {
         if (feed.endsWith('.z') && typeof data === 'string') mergeFeed(feed.slice(0, -2), decompressZ(data));
+        else if (feed === 'SessionStatus') onSessionStatus(data?.Status, false);
         else mergeFeed(feed, data);
       });
     }
@@ -440,6 +479,7 @@ async function main() {
       const [feedName, payload] = m.arguments;
       if (!feedName) return;
       if (feedName.endsWith('.z') && typeof payload === 'string') mergeFeed(feedName.slice(0, -2), decompressZ(payload));
+      else if (feedName === 'SessionStatus') onSessionStatus(payload?.Status, true);
       else mergeFeed(feedName, payload);
     }
     // type 6 = keepalive ping from server — reply with a ping to stay alive
@@ -475,6 +515,11 @@ async function main() {
       try { ws.send(JSON.stringify({ type: 6 }) + RS); } catch (e) {}
     }
   }, 10000);
+}
+
+if (runMinutes) {
+  log(`⏱  Cloud run: at most ${runMinutes} min${dryRun ? ' (dry run)' : ''}`);
+  setTimeout(() => stopBridge(0, 'time limit reached'), runMinutes * 60000);
 }
 
 main().catch(err => {

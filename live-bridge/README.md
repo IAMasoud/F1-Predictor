@@ -34,7 +34,15 @@ Then open `.env` and fill in:
   The bridge saves through the site's `/api/save` endpoint; the database itself is read-only to the public key.
 - `NEWSLETTER_TRIGGER_KEY` — the same value, if the race-report email should go out automatically after the race.
 
-## Run it (every race weekend)
+## In the cloud (the usual way)
+
+The bridge also runs on GitHub Actions (`.github/workflows/live-timing.yml`), so no computer has to stay on.
+The `ops` Supabase function starts one run 5 to 10 minutes before every session (pg_cron job `live-timing`),
+and the run stops a few minutes after F1 marks the session over. It needs the repository secret `BRIDGE_KEY`
+(the CRON_SECRET value) and a fine-grained GitHub token with Actions read and write, saved in Pit Wall →
+Health and reports. Pit Wall also shows the latest runs and can start one by hand.
+
+## Run it on your computer (every race weekend)
 
 ```bash
 npm start
