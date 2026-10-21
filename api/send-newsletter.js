@@ -5,6 +5,7 @@
  */
 // The race report email, sent to subscribers through Brevo. Needs the CRON_SECRET.
 //   ?check=1              ask Brevo whether it accepts our key; sends nothing (ops scan)
+//   ?owner=1 {subject, html, attachment?}  one message to the owner's address only
 //   ?preview=1            build it and return the HTML (admin page)
 //   ?test=1  {to}         send it to one address only, never logged (admin page)
 //   (no flag)             send to every subscriber; refuses a race already sent unless &force=1
@@ -191,6 +192,26 @@ export default async function handler(req, res) {
       const error = /unrecognised IP/i.test(m) ? `Brevo blocked our server's IP address${ip ? ` ${ip}` : ''} (${r.status})` : m ? `Brevo: ${m.slice(0, 80)} (${r.status})` : `Brevo answered ${r.status}`;
       return res.status(200).json({ ok: false, error });
     } catch (e) { return res.status(200).json({ ok: false, error: `Brevo did not answer (${e.name === 'TimeoutError' ? 'timed out' : e.message})` }); }
+  }
+
+  // A message for the owner only (e.g. a document from our private storage). The address is fixed.
+  if (req.query?.owner === '1') {
+    const to = (process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com').toLowerCase();
+    const subject = String(body.subject || '').slice(0, 150);
+    const html = String(body.html || '');
+    const att = body.attachment || null;
+    if (!subject || !html) return res.status(400).json({ error: 'Subject and html are needed' });
+    if (att && !(String(att.url || '').startsWith(`${SB_URL}/storage/v1/object/sign/`) && /^[\w .-]{1,80}\.pdf$/i.test(String(att.name || '')))) {
+      return res.status(400).json({ error: 'The attachment must be a signed PDF link from our storage' });
+    }
+    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST', headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ sender: { name: FROM_NAME, email: FROM_EMAIL }, to: [{ email: to }], subject, htmlContent: html,
+        ...(att ? { attachment: [{ url: att.url, name: att.name }] } : {}) }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!r.ok) return res.status(502).json({ error: `Brevo refused it: ${r.status} ${(await r.text()).slice(0, 160)}` });
+    return res.status(200).json({ ok: true, to, messageId: (await r.json().catch(() => ({})))?.messageId || null });
   }
 
   const sbH = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
