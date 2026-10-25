@@ -883,10 +883,10 @@ function wireDelivery(){
     if(k === 'tg'){ const t = $('tgToken').value.trim(); if(!t) return toast('Paste the bot token first'); save({ telegram_token: t, telegram_chat: '' }, 'Bot saved. Now open it in Telegram, press Start, then Find my chat.'); }
     if(k === 'dc'){ const u = $('dcHook').value.trim(); if(!u) return toast('Paste the webhook URL first'); save({ discord_webhook: u }, 'Discord saved'); }
   });
-  $('tgFind').onclick = async () => { try{ await api({ action:'telegram_chat' }); toast('Found your chat. Telegram is on.'); go('health'); }catch(e){ toast(e.message); } };
+  $('tgFind').onclick = async () => { try{ await api({ action:'telegram_chat' }, {}); toast('Found your chat. Telegram is on.'); go('health'); }catch(e){ toast(e.message); } };
   $('notifyTest').onclick = async e => {
     e.target.disabled = true;
-    try{ const r = await api({ action:'notify_test' }); const ok = Object.entries(r.results || {}).filter(([, v]) => v === 'ok').map(([k]) => k), bad = Object.entries(r.results || {}).filter(([, v]) => v !== 'ok');
+    try{ const r = await api({ action:'notify_test' }, {}); const ok = Object.entries(r.results || {}).filter(([, v]) => v === 'ok').map(([k]) => k), bad = Object.entries(r.results || {}).filter(([, v]) => v !== 'ok');
       toast(ok.length ? `Sent to ${ok.join(', ')}${bad.length ? `; failed: ${bad.map(([k, v]) => `${k} (${v})`).join(', ')}` : ''}` : `Nothing was sent${bad.length ? `: ${bad.map(([k, v]) => `${k} (${v})`).join(', ')}` : ''}`); }
     catch(err){ toast(err.message); }
     finally{ e.target.disabled = false; }
@@ -922,7 +922,7 @@ function wireLive(){
   $('ghStart').onclick = async e => {
     if(!confirm('Start live timing now? It runs for up to 2 hours, or until the session is over.')) return;
     e.target.disabled = true;
-    try{ const r = await api({ action:'bridge_start' }); toast(r.ok ? 'Started. It shows up below in a few seconds.' : (r.error || 'It did not start')); setTimeout(() => go('health'), 4000); }
+    try{ const r = await api({ action:'bridge_start' }, {}); toast(r.ok ? 'Started. It shows up below in a few seconds.' : (r.error || 'It did not start')); setTimeout(() => go('health'), 4000); }
     catch(err){ toast(err.message); e.target.disabled = false; }
   };
 }
