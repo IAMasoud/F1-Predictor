@@ -6,6 +6,8 @@
 // The race report email, sent to subscribers through Brevo. Needs the CRON_SECRET.
 //   ?check=1              ask Brevo whether it accepts our key; sends nothing (ops scan)
 //   ?owner=1 {subject, html, attachment?}  one message to the owner's address only
+//   ?mode=live            "the race is live": &preview=1 for the HTML, &test=1 {to} for one address,
+//                         otherwise every subscriber, once per race (email_broadcasts) unless &force=1
 //   ?preview=1            build it and return the HTML (admin page)
 //   ?test=1  {to}         send it to one address only, never logged (admin page)
 //   (no flag)             send to every subscriber; refuses a race already sent unless &force=1
@@ -160,6 +162,121 @@ function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextR
 </body></html>`;
 }
 
+/* "The race is live": a short email while a race is running, pointing to the Live screen. */
+function buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster = {} }) {
+  const FONT = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const COND = "'Barlow Condensed','Arial Narrow',Arial,sans-serif";
+  const who = a => roster[a] || {};
+  const surname = a => String(who(a).name || a).split(' ').slice(-1)[0];
+  const color = a => TEAM_COLORS[normalizeTeam(who(a).team || '')] || '#8c8c8c';
+  const slash = a => `<span style="display:inline-block;width:4px;height:16px;background:${color(a)};transform:skewX(-18deg);vertical-align:-2px;margin-right:8px"></span>`;
+  const label = t => `<div style="font:600 11px ${FONT};letter-spacing:2px;text-transform:uppercase;color:#949494;margin:26px 0 10px">${t}</div>`;
+  const leader = grid[0]?.abbr;
+  const liveUrl = `${APP}/?go=live`;
+  const top5 = grid.slice(0, 5).map(g => `<tr>
+      <td style="padding:9px 0;border-top:1px solid #222225;font:italic 800 18px ${COND};color:#ffffff;width:34px">${g.pos}</td>
+      <td style="padding:9px 0;border-top:1px solid #222225;font:600 15px ${FONT};color:#ffffff">${slash(g.abbr)}${esc(surname(g.abbr))}</td>
+      <td align="right" style="padding:9px 0;border-top:1px solid #222225;font:500 14px ${FONT};color:#b4b4b4">${g.pos === 1 ? 'Leader' : esc(g.gap || '')}</td></tr>`).join('');
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+<title>${esc(race.name)} is live</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,800&display=swap" rel="stylesheet"></head>
+<body style="margin:0;padding:0;background:#070708">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#070708"><tr><td align="center">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;background:#070708">
+      <tr><td style="padding:26px 24px 0">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+          <td style="font:700 12px ${FONT};letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;&#9679;</span>&nbsp; F1 PREDICTOR</td>
+          <td align="right" style="font:500 12px ${FONT};color:#949494">${season} season · round ${race.round}</td>
+        </tr></table>
+        <div style="font:600 11px ${FONT};letter-spacing:2px;text-transform:uppercase;color:#ff2a2a;margin-top:26px">&#9679; The race is live</div>
+        <div style="font:italic 800 34px/1.02 ${COND};text-transform:uppercase;color:#ffffff;margin-top:6px">${esc(race.name)}</div>
+        <div style="font:500 15px/1.5 ${FONT};color:#d6d6d6;margin-top:10px">${lap ? `Lap ${lap}${total ? ` of ${total}` : ''}` : 'Lights out'}${leader ? `, and ${esc(surname(leader))} leads.` : '.'} Follow every lap with us: live timing, tyres and pit stops, and the AI's call as the race unfolds.</div>
+        <a href="${liveUrl}" style="display:inline-block;margin-top:18px;background:#e01e1e;color:#ffffff;text-decoration:none;font:700 15px ${FONT};letter-spacing:.5px;text-transform:uppercase;padding:13px 24px;border-radius:8px">Follow it live</a>
+      </td></tr>
+      ${grid.length ? `<tr><td style="padding:0 24px">${label('Right now')}
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%">${top5}</table></td></tr>` : ''}
+      <tr><td style="padding:0 24px">${label('The AI')}
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#111113;border-radius:10px"><tr><td style="padding:16px 18px;font:500 14px/1.55 ${FONT};color:#b4b4b4">
+          ${aiPick ? `Before the start it picked <b style="font:italic 800 20px ${COND};color:#ffffff">${slash(aiPick.abbr)}${esc(surname(aiPick.abbr))}${aiPick.winProb ? ` ${aiPick.winProb}%` : ''}</b><br>` : ''}
+          On the Live screen, tap <b style="color:#ffffff">Ask the AI now</b> for a fresh call with the latest gaps and tyres.
+        </td></tr></table></td></tr>
+      <tr><td style="padding:30px 24px 30px;font:500 12px/1.6 ${FONT};color:#949494">
+        You get this because you joined the F1 Predictor race reports.<br>
+        <a href="%%UNSUB_URL%%" style="color:#b4b4b4">Unsubscribe</a> &nbsp;·&nbsp; <a href="${APP}" style="color:#b4b4b4">Open the app</a>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
+async function liveEmail(req, res, { body, preview, test, force, BREVO_KEY, SB_URL, SB_KEY, FROM_EMAIL, FROM_NAME }) {
+  const sbH = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
+  const sbGet = async path => { const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: sbH, signal: AbortSignal.timeout(8000) }); return r.ok ? r.json() : []; };
+  const { season = FALLBACK_SEASON, races } = await loadSeason();
+  const now = Date.now();
+  const startOf = r => Date.parse(`${r.date}T${r.raceUTC || '12:00'}:00Z`);
+  const wanted = String(req.query?.circuit || body.circuit || '');
+  // The race under way (from 10 minutes before the start to 4 hours after); a draft can use any race.
+  const race = wanted ? races.find(r => r.circuitId === wanted)
+    : races.find(r => now >= startOf(r) - 10 * 60e3 && now <= startOf(r) + 4 * HOUR) || (preview ? races.find(r => startOf(r) + 4 * HOUR > now) : null);
+  if (!race) return res.status(409).json({ error: 'No race is live right now' });
+
+  const rows = await sbGet(`sessions?session_name=eq.Race&year=eq.${season}&circuit_id=eq.${race.circuitId}&order=fetched_at.desc&limit=3`);
+  const grid = ((rows || [])[0]?.grid_data || []).filter(g => g.abbr && g.pos).sort((a, b) => a.pos - b.pos);
+  const lap = +(grid.find(g => g.curLap)?.curLap) || Math.max(0, ...grid.map(g => +g.lap || 0)) || null;
+  const total = grid.find(g => g.totalLaps)?.totalLaps || null;
+  const preds = await sbGet(`predictions?circuit_id=eq.${race.circuitId}&round=eq.${race.round}&pred_type=eq.race&stage=neq.final&hidden=eq.false&select=stage,prediction`);
+  const best = (preds || []).filter(p => p.prediction?.top10?.length && !p.prediction._fallback)
+    .sort((x, y) => (PRE_RACE_STAGES.indexOf(x.stage) + 1 || 50) - (PRE_RACE_STAGES.indexOf(y.stage) + 1 || 50))[0];
+  const p1 = (best?.prediction?.top10 || []).slice().sort((a, b) => (+a.pos || 99) - (+b.pos || 99))[0];
+  const aiPick = p1 ? { abbr: String(p1.abbr || '').toUpperCase(), winProb: Math.round(+p1.winProb) || null } : null;
+  const roster = {};
+  try {
+    const js = await fetch(`https://api.jolpi.ca/ergast/f1/${season}/driverstandings.json?limit=40`, { signal: AbortSignal.timeout(6000) });
+    (await js.json())?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings?.forEach(e => {
+      if (e.Driver?.code) roster[e.Driver.code] = { name: `${e.Driver.givenName} ${e.Driver.familyName}`, team: e.Constructors?.[0]?.name || '' };
+    });
+  } catch { /* names fall back to the driver codes */ }
+
+  const html = buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster });
+  const leader = grid[0]?.abbr ? (roster[grid[0].abbr]?.name || grid[0].abbr).split(' ').slice(-1)[0] : null;
+  const subject = `The ${race.name} is live${leader && lap ? `: ${leader} leads on lap ${lap}` : ''}`;
+  const subs = await sbGet('subscribers?active=eq.true&select=id,email');
+  if (preview) return res.status(200).json({ ok: true, preview: true, subject, race: race.name, recipients: subs.length, html: html.replace('%%UNSUB_URL%%', '#') });
+
+  const sendOne = async (to, unsub, subj) => {
+    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST', headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ sender: { name: FROM_NAME, email: FROM_EMAIL }, to: [{ email: to }], subject: subj, htmlContent: html.replace('%%UNSUB_URL%%', unsub),
+        ...(unsub.startsWith(`${APP}/api/`) ? { headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 160)}`);
+  };
+  if (test) {
+    const to = String(body.to || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(to)) return res.status(400).json({ error: 'No test address' });
+    try { await sendOne(to, `${APP}/?unsubscribe=1`, `[Test] ${subject}`); } catch (e) { return res.status(502).json({ error: `Brevo refused the test: ${e.message}` }); }
+    return res.status(200).json({ ok: true, test: true, to, subject });
+  }
+  // Once per race: claim the send first, so two presses can never both send it.
+  const claim = await fetch(`${SB_URL}/rest/v1/email_broadcasts${force ? '?on_conflict=kind,season,round' : ''}`, {
+    method: 'POST', headers: { ...sbH, 'Content-Type': 'application/json', Prefer: `${force ? 'resolution=merge-duplicates,' : ''}return=representation` },
+    body: JSON.stringify({ kind: 'live', season, round: race.round, sent: 0, failed: 0, ts: new Date().toISOString() }),
+  });
+  if (claim.status === 409) return res.status(409).json({ error: 'The race-is-live email already went out for this race' });
+  if (!claim.ok) return res.status(502).json({ error: 'Could not record the send' });
+  const row = (await claim.json())?.[0];
+  let sent = 0, failed = 0;
+  for (const s of subs) {
+    let unsub; try { unsub = `${APP}/api/unsubscribe?id=${s.id}&t=${unsubToken(s.id)}`; } catch { unsub = `${APP}/?unsubscribe=1`; }
+    try { await sendOne(s.email, unsub, subject); sent++; } catch { failed++; }
+  }
+  if (row?.id) await fetch(`${SB_URL}/rest/v1/email_broadcasts?id=eq.${row.id}`, { method: 'PATCH', headers: { ...sbH, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ sent, failed }) }).catch(() => {});
+  return res.status(200).json({ ok: true, sent, failed, subject, race: race.name });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -193,6 +310,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: false, error });
     } catch (e) { return res.status(200).json({ ok: false, error: `Brevo did not answer (${e.name === 'TimeoutError' ? 'timed out' : e.message})` }); }
   }
+
+  if (req.query?.mode === 'live') return liveEmail(req, res, { body, preview, test, force, BREVO_KEY, SB_URL, SB_KEY, FROM_EMAIL, FROM_NAME });
 
   // A message for the owner only (e.g. a document from our private storage). The address is fixed.
   if (req.query?.owner === '1') {

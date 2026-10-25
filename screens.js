@@ -884,3 +884,9 @@ const SCR_FACTS = {
   scrTopNav('pred');
   renderLightsOut(true);
 })();
+
+// Links like /?go=live (the race-is-live email) open straight on that screen.
+window.addEventListener('load', () => {
+  const go = new URLSearchParams(location.search).get('go');
+  if(go && typeof SCR_ALL !== 'undefined' && SCR_ALL.includes(go)) setTimeout(() => setTab(go), 300);
+});
