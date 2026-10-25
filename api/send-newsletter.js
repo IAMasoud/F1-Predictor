@@ -210,6 +210,33 @@ function buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster = {
 </body></html>`;
 }
 
+/* The same news as a short personal note from Ahmed: plain text, one link, no newsletter design.
+   Gmail sorts notes like this into Primary (which notifies) far more often than designed emails. */
+function buildLiveNote({ race, grid, lap, total, aiPick, roster = {} }) {
+  const surname = a => String((roster[a] || {}).name || a).split(' ').slice(-1)[0];
+  const [p1, p2, p3] = grid;
+  const gap = g => (g?.gap ? String(g.gap).replace(/^\+/, '') : '');
+  const now = p1 ? `It's lap ${lap || '?'}${total ? ` of ${total}` : ''} and ${surname(p1.abbr)} leads${p2 ? `, ${gap(p2) ? `${gap(p2)} seconds ahead of ` : 'ahead of '}${surname(p2.abbr)}` : ''}${p3 ? `, with ${surname(p3.abbr)} third` : ''}.` : 'The lights are out.';
+  const ai = aiPick ? `Before the start, our AI picked ${surname(aiPick.abbr)}${aiPick.winProb ? ` at ${aiPick.winProb}%` : ''}. ` : '';
+  const url = `${APP}/?go=live`;
+  const lines = [
+    'Hi,', '',
+    `The ${race.name} is live. ${now}`, '',
+    `${ai}You can follow every lap, with tyres and pit stops, and ask the AI for a fresh call here:`, url, '',
+    'Ahmed', '',
+    'You get this because you joined the F1 Predictor race reports. Unsubscribe: %%UNSUB_URL%%',
+  ];
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#222222">
+<p>Hi,</p>
+<p>The ${esc(race.name)} is live. ${esc(now)}</p>
+<p>${esc(ai)}You can follow every lap, with tyres and pit stops, and ask the AI for a fresh call here:<br><a href="${url}">${APP.replace(/^https:\/\//, '')}</a></p>
+<p>Ahmed</p>
+<p style="font-size:12px;color:#888888">You get this because you joined the F1 Predictor race reports. <a href="%%UNSUB_URL%%" style="color:#888888">Unsubscribe</a></p>
+</div></body></html>`;
+  return { html, text: lines.join('\n') };
+}
+
 async function liveEmail(req, res, { body, preview, test, force, BREVO_KEY, SB_URL, SB_KEY, FROM_EMAIL, FROM_NAME }) {
   const sbH = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
   const sbGet = async path => { const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: sbH, signal: AbortSignal.timeout(8000) }); return r.ok ? r.json() : []; };
@@ -239,17 +266,28 @@ async function liveEmail(req, res, { body, preview, test, force, BREVO_KEY, SB_U
     });
   } catch { /* names fall back to the driver codes */ }
 
-  const html = buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster });
+  // The personal note by default; &style=designed for the newsletter-style version.
+  const designed = (req.query?.style || body.style) === 'designed';
+  const note = buildLiveNote({ race, grid, lap, total, aiPick, roster });
+  const html = designed ? buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster }) : note.html;
+  const text = designed ? null : note.text;
   const leader = grid[0]?.abbr ? (roster[grid[0].abbr]?.name || grid[0].abbr).split(' ').slice(-1)[0] : null;
   const subject = `The ${race.name} is live${leader && lap ? `: ${leader} leads on lap ${lap}` : ''}`;
   const subs = await sbGet('subscribers?active=eq.true&select=id,email');
-  if (preview) return res.status(200).json({ ok: true, preview: true, subject, race: race.name, recipients: subs.length, html: html.replace('%%UNSUB_URL%%', '#') });
+  if (preview) return res.status(200).json({ ok: true, preview: true, subject, race: race.name, recipients: subs.length, html: html.replace(/%%UNSUB_URL%%/g, '#'), text });
 
+  // The note is sent like a personal email: from Ahmed, with a plain-text part, replies to him,
+  // and without the bulk-mail unsubscribe header (the link in the email still works).
+  const owner = process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com';
   const sendOne = async (to, unsub, subj) => {
     const r = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST', headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ sender: { name: FROM_NAME, email: FROM_EMAIL }, to: [{ email: to }], subject: subj, htmlContent: html.replace('%%UNSUB_URL%%', unsub),
-        ...(unsub.startsWith(`${APP}/api/`) ? { headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}) }),
+      body: JSON.stringify({
+        sender: { name: designed ? FROM_NAME : 'Ahmed Masoud', email: FROM_EMAIL }, to: [{ email: to }], subject: subj,
+        htmlContent: html.replace(/%%UNSUB_URL%%/g, unsub), ...(text ? { textContent: text.replace(/%%UNSUB_URL%%/g, unsub) } : {}),
+        ...(designed ? {} : { replyTo: { name: 'Ahmed Masoud', email: owner } }),
+        ...(designed && unsub.startsWith(`${APP}/api/`) ? { headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}),
+      }),
       signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 160)}`);
