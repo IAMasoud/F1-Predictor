@@ -402,8 +402,16 @@ function scrLiveRender(race, live, row){
     h += `<div class="lv-top"><div style="min-width:0"><div class="lbl">${esc(race.name)} · ${esc(title.toLowerCase())}</div><div class="big">${big}</div></div>
       <div class="lv-acts">${flag}<button type="button" class="lv-refresh" onclick="scrLiveRefresh(this)">${fresh ? 'Updated' : 'Refresh'}</button></div></div>`;
     if(racey && (isLive || ai)){
-      h += `<div class="lv-ai"><div><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}${ai.winChance ? ' · chance to win' : ' · predicted winner'}` : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start'}</div></div>
-        ${ai ? `<b>${esc(ai.top)}${ai.winChance ? ` ${ai.winChance}%` : ''}</b>` : isLive ? '<button type="button" class="btn2 red" onclick="scrLiveAsk(this)">Ask the AI now</button>' : ''}</div>`;
+      // The ask button stays (as "Ask again" after an answer) and keeps saying "Thinking…" across the
+      // 3-second refreshes; if the AI couldn't answer, that is said here instead of nothing.
+      const msg = SCR.liveAskMsg && Date.now() - SCR.liveAskMsg.at < 30000 ? SCR.liveAskMsg.text : '';
+      const sub = msg ? `<span style="color:var(--loss)">${esc(msg)}</span>`
+        : SCR.liveAsking ? 'Reading the gaps, tyres and stops…'
+        : ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}${ai.winChance ? ' · chance to win' : ' · predicted winner'}`
+        : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start';
+      const ask = isLive ? `<button type="button" class="btn2 ${ai ? '' : 'red'}" onclick="scrLiveAsk(this)" ${SCR.liveAsking ? 'disabled' : ''}>${SCR.liveAsking ? 'Thinking…' : ai ? 'Ask again' : 'Ask the AI now'}</button>` : '';
+      h += `<div class="lv-ai"><div style="min-width:0"><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${sub}</div></div>
+        <div class="lv-ai-r">${ai ? `<b>${esc(ai.top)}${ai.winChance ? ` ${ai.winChance}%` : ''}</b>` : ''}${ask}</div></div>`;
     } else if(!isLive && preTop && racey){
       h += `<div class="lv-ai"><div><div class="lbl">Before the start the AI said</div><div class="scr-sub" style="margin-top:3px">See how it did in Reality</div></div><b>${esc(String(preTop.abbr || '').toUpperCase())} ${scrWin(preTop.winProb)}</b></div>`;
     }
@@ -429,8 +437,22 @@ function scrLiveRender(race, live, row){
   el.innerHTML = h;
 }
 async function scrLiveAsk(btn){
-  btn.disabled = true; btn.textContent = 'Thinking…';
-  try{ await runMidRacePrediction(); }finally{ scrLiveRender(loSelectedRace(), getLiveSessionLabel(loSelectedRace()), SCR.liveRow); }
+  if(SCR.liveAsking) return;
+  SCR.liveAsking = true; SCR.liveAskMsg = null;
+  if(btn){ btn.disabled = true; btn.textContent = 'Thinking…'; }
+  const before = window._lastLiveAI?.at;
+  try{ await runMidRacePrediction(); }
+  catch(e){}
+  finally{
+    SCR.liveAsking = false;
+    if(window._lastLiveAI?.at === before){
+      // No new answer: show why (the status line of the prediction), or a plain "busy" note.
+      const st = ($('midRaceStatus')?.innerText || '').replace(/^[✗✓\s]+/, '').trim();
+      const said = st.match(/"message"\s*:\s*"([^"]+)"/)?.[1] || st;
+      SCR.liveAskMsg = { at: Date.now(), text: said && !/Loaded latest|Analyzing|AI API error|HTTP \d|^\{/i.test(said) ? said : 'The AI is busy right now. Try again in a minute.' };
+    }
+    scrLiveRender(loSelectedRace(), getLiveSessionLabel(loSelectedRace()), SCR.liveRow);
+  }
 }
 
 /* ═══════════════ 3A · REALITY ═══════════════ */

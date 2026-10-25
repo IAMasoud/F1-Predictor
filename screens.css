@@ -117,6 +117,8 @@ body[data-screen="pred"] .pane{display:none!important}
 .lv-flag.live i{background:var(--lamp)}.lv-flag.yellow i{background:#ffc93c}.lv-flag.green i{background:var(--gain)}.lv-flag.red i{background:var(--lamp)}
 .lv-rc{display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 14px;border-radius:12px;background:var(--card);font:500 15px/1.35 'Barlow',sans-serif}
 .lv-ai{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px;padding:12px 14px;border-radius:12px;background:var(--sec)}
+.lv-ai-r{display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.lv-ai .btn2:disabled{opacity:.6;cursor:default}
 .lv-ai b{font:italic 800 26px/1 'Barlow Condensed',sans-serif;white-space:nowrap}
 .lv-th{display:flex;align-items:center;height:28px;margin-top:14px;font:500 12px 'Barlow',sans-serif;color:var(--dim)}
 .lv-th span:first-child{width:33px}

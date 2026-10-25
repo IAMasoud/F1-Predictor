@@ -91,7 +91,9 @@ async function callGroq(key, { system, prompt, temperature }, timeoutMs) {
    pass longer waits than a visitor's Generate button does.
    Returns { text, model, provider }. Throws AIError (status 429 when every provider is rate-limited). */
 export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000,
-  waits = [0, 1500], perAttemptMs = PER_ATTEMPT_MS, meta, only }) {
+  waits = [0, 1500], perAttemptMs = PER_ATTEMPT_MS, meta, only, fast = false }) {
+  // fast (a visitor is waiting): at most 8 s per Gemini model, and Groq right after the first
+  // busy or slow one, so one hanging model can't use up the whole time.
   const started = Date.now();
   const left = () => deadlineMs - (Date.now() - started);
   const opts = { system, prompt, temperature, maxTokens };
@@ -105,7 +107,7 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
     groqTried = true;
     const t0 = Date.now();
     try {
-      const out = await callGroq(groqKey, opts, Math.min(left(), perAttemptMs));
+      const out = await callGroq(groqKey, opts, Math.min(left(), fast ? 15000 : perAttemptMs));
       attempts.push({ model: GROQ_MODEL, ok: true, ms: Date.now() - t0 });
       await logAttempts(attempts, meta);
       return out;
@@ -133,7 +135,7 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
       if (m.lite && groqKey && !groqTried) { const out = await tryGroq(); if (out) return out; if (left() < 4000) break; }
       const t0 = Date.now();
       try {
-        const out = await callGemini(m, geminiKey, opts, Math.min(left(), perAttemptMs));
+        const out = await callGemini(m, geminiKey, opts, Math.min(left(), fast ? 8000 : perAttemptMs));
         console.log(`[ai] ${m.model} ok in ${Date.now() - t0}ms (${out.model})`);
         attempts.push({ model: m.model, ok: true, ms: Date.now() - t0 });
         await logAttempts(attempts, meta);
@@ -145,6 +147,7 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
         console.warn(`[ai] ${m.model} failed after ${Date.now() - t0}ms: ${e.status || e.name} ${String(e.message).slice(0, 200)}`);
         // A rejected key won't work on another model or pass.
         if (e.status === 401 || e.status === 403) { pass = waits.length; break; }
+        if (fast && groqKey && !groqTried && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
       }
     }
     // The backup provider goes right after the first full pass, before any waiting.

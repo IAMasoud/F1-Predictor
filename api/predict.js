@@ -37,7 +37,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const out = await generateText({ system: SYSTEM, prompt, temperature: 0.8, deadlineMs: 40000, // page gives up at 45s
+    const out = await generateText({ system: SYSTEM, prompt, temperature: 0.8, deadlineMs: 40000, fast: true, // page gives up at 45s
       meta: { source: 'user', race: tag(race), stage: tag(stage) } });
     // Same shape the page already reads: data.choices[0].message.content
     res.status(200).json({
