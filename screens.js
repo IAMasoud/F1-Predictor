@@ -402,8 +402,8 @@ function scrLiveRender(race, live, row){
     h += `<div class="lv-top"><div style="min-width:0"><div class="lbl">${esc(race.name)} · ${esc(title.toLowerCase())}</div><div class="big">${big}</div></div>
       <div class="lv-acts">${flag}<button type="button" class="lv-refresh" onclick="scrLiveRefresh(this)">${fresh ? 'Updated' : 'Refresh'}</button></div></div>`;
     if(racey && (isLive || ai)){
-      h += `<div class="lv-ai"><div><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}` : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start'}</div></div>
-        ${ai ? `<b>${esc(ai.top)}${ai.confidence ? ` ${ai.confidence}%` : ''}</b>` : isLive ? '<button type="button" class="btn2 red" onclick="scrLiveAsk(this)">Ask the AI now</button>' : ''}</div>`;
+      h += `<div class="lv-ai"><div><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}${ai.winChance ? ' · chance to win' : ' · predicted winner'}` : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start'}</div></div>
+        ${ai ? `<b>${esc(ai.top)}${ai.winChance ? ` ${ai.winChance}%` : ''}</b>` : isLive ? '<button type="button" class="btn2 red" onclick="scrLiveAsk(this)">Ask the AI now</button>' : ''}</div>`;
     } else if(!isLive && preTop && racey){
       h += `<div class="lv-ai"><div><div class="lbl">Before the start the AI said</div><div class="scr-sub" style="margin-top:3px">See how it did in Reality</div></div><b>${esc(String(preTop.abbr || '').toUpperCase())} ${scrWin(preTop.winProb)}</b></div>`;
     }

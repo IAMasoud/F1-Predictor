@@ -398,7 +398,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.75';
+const APP_VERSION = 'BETA 1.76';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -1553,7 +1553,7 @@ async function runMidRacePrediction(){
   const posEl = $('midRacePositions');
   const userEdited = posEl?.dataset?.manual === '1' && posEl.value.trim();
   if(window._latestRaceGrid?.length && !userEdited){
-    posEl.value = window._latestRaceGrid.slice(0,10).map(g=>g.abbr).join(', ');
+    posEl.value = window._latestRaceGrid.filter(g => g.abbr && g.pos).sort((a, b) => a.pos - b.pos).map(g => g.abbr).join(', ');
     const ds = window._lastDataSources?.['Race'];
     const ageTxt = ds ? ` (${ds.age_sec}s old)` : '';
     $('midRaceStatus').innerHTML = `<span style="color:#3fc07a">✓ Loaded latest live positions${ageTxt}</span>`;
@@ -1561,9 +1561,10 @@ async function runMidRacePrediction(){
   const posInput = ($('midRacePositions').value || '').trim();
 
   // ── Auto-derive CURRENT LAP from the live grid (leader's lap), with manual override ──
-  let curLap = parseInt($('midRaceLap').value || '0', 10);
+  // Re-read on every tap (F1's own lap counter when the feed has it) unless typed in by hand.
+  let curLap = $('midRaceLap').dataset.manual === '1' ? parseInt($('midRaceLap').value || '0', 10) : 0;
   if(!curLap && window._latestRaceGrid?.length){
-    curLap = Math.max(...window._latestRaceGrid.map(g => g.lap || 0), 0);
+    curLap = +(window._latestRaceGrid.find(g => g.curLap)?.curLap) || Math.max(...window._latestRaceGrid.map(g => g.lap || 0), 0);
     if(curLap) $('midRaceLap').value = curLap;
   }
   // ── Auto-derive TOTAL LAPS: live feed → circuit map → manual ──
@@ -1613,9 +1614,21 @@ async function runMidRacePrediction(){
     .map(d => d.abbr)
     .slice(0, 20);
 
-  const currentPosLines = currentOrder.map(o =>
-    `P${o.pos}: ${o.abbr} (${teamName(o.team)})`
-  ).join('\n');
+  // What the live timing knows about each car: gap, tyre and its age, stops.
+  const TYRE_NAME = { S: 'Soft', M: 'Medium', H: 'Hard', I: 'Intermediate', W: 'Wet' };
+  const liveBy = Object.fromEntries((window._latestRaceGrid || []).map(g => [String(g.abbr || '').toUpperCase(), g]));
+  const currentPosLines = currentOrder.map(o => {
+    const g = liveBy[o.abbr], bits = [];
+    if(g){
+      bits.push(o.pos === 1 ? 'leader' : g.gap ? `${g.gap} behind the leader` : '');
+      if(g.tyre) bits.push(`${TYRE_NAME[g.tyre] || g.tyre} tyres${g.tyreAge != null ? `, ${g.tyreAge} laps old` : ''}`);
+      if(g.pitCount != null) bits.push(`${g.pitCount} pit stop${g.pitCount === 1 ? '' : 's'} so far`);
+      if(g.inPit) bits.push('in the pit lane now');
+    }
+    return `P${o.pos}: ${o.abbr} (${teamName(o.team)})${bits.filter(Boolean).length ? ' · ' + bits.filter(Boolean).join(' · ') : ''}`;
+  }).join('\n');
+  const FLAG_TEXT = { AllClear: 'green flag', Yellow: 'yellow flag', SCDeployed: 'safety car out', VSCDeployed: 'virtual safety car', VSCEnding: 'virtual safety car ending', Red: 'red flag' };
+  const trackNow = FLAG_TEXT[(window._latestRaceGrid || []).find(g => g.flag)?.flag] || '';
 
   // Pace context — only for ACTIVE drivers
   const activePaceLines = currentOrder.map(o => {
@@ -1631,7 +1644,7 @@ async function runMidRacePrediction(){
 
 ═══ RACE STATE ═══
 Circuit: ${race.circuit}
-Lap: ${curLap} of ${totalLaps} (${racePct}% complete, ${lapsLeft} laps remaining)
+Lap: ${curLap} of ${totalLaps} (${racePct}% complete, ${lapsLeft} laps remaining)${trackNow ? `\nTrack: ${trackNow}` : ''}
 ${lapsLeft < 10 ? '⚠ LATE-RACE PHASE — positions are largely set unless major incidents.' : lapsLeft < 25 ? 'MID-LATE PHASE — final pit stops likely done, watch for tyre cliff.' : 'EARLY-MID PHASE — pit strategies still in flux, undercuts/overcuts critical.'}
 ${priorPredBlock}
 ═══ CURRENT ON-TRACK POSITIONS (these are the ONLY drivers still racing) ═══
@@ -1657,13 +1670,15 @@ Predict the FINAL finishing order for ONLY the drivers currently on track, based
 4. Typical race dynamics (DRS trains, late-race attacks)
 5. Whether ${lapsLeft} laps is enough for overtakes from lower positions
 
-Be DATA-DRIVEN. Don't just copy the current order — reason about who is likely to gain/lose positions in the remaining ${lapsLeft} laps.
+Be DATA-DRIVEN. Don't just copy the current order — reason about who is likely to gain/lose positions in the remaining ${lapsLeft} laps, using the gaps, tyre compounds, tyre ages and stops above.
+"winChance" is the realistic chance (0-100) that YOUR predicted P1 wins from here. Keep it honest: with many laps left and small gaps it should be moderate (a leader 2-3 s ahead with 40+ laps to go is rarely above 55).
 
 Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track list above):
 {
   "top10": ["VER", "NOR", "HAM", "..."],
   "reasoning": "2-3 sentences covering key factors AND (if a pre-race prediction was provided) what changed vs that prediction and why.",
   "confidence": 75,
+  "winChance": 45,
   "keyMovers": [
     {"abbr": "HAM", "movement": "+2", "reason": "Fresh tyres after late stop"},
     {"abbr": "LEC", "movement": "-1", "reason": "Old tyres, DRS train behind"}
@@ -1740,7 +1755,8 @@ Return JSON ONLY in this exact format (use ONLY abbreviations from the on-track 
       </div>`;
 
     $('midRaceStatus').innerHTML = `<span style="color:#3fc07a">✓ Live prediction generated · Lap ${curLap}/${totalLaps}</span>`;
-    window._lastLiveAI = { circuitId: race.circuitId, top: parsed.top10[0], top10: parsed.top10, confidence: parsed.confidence || null, lap: curLap, totalLaps, at: Date.now() };
+    const winChance = Number.isFinite(+parsed.winChance) ? Math.max(1, Math.min(99, Math.round(+parsed.winChance))) : null;
+    window._lastLiveAI = { circuitId: race.circuitId, top: parsed.top10[0], top10: parsed.top10, confidence: parsed.confidence || null, winChance, lap: curLap, totalLaps, at: Date.now() };
     window.scrOnLiveAI?.();
     showToast(`🔄 New prediction made — based on current positions (Lap ${curLap}${totalLaps?'/'+totalLaps:''})`, 'success', 4500);
   } catch(e) {

@@ -455,7 +455,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
             <label style="display:block;font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Current Lap</label>
-            <input type="number" id="midRaceLap" placeholder="auto" min="1" max="100"
+            <input type="number" id="midRaceLap" oninput="this.dataset.manual='1'" placeholder="auto" min="1" max="100"
               style="width:100%;background:rgba(0,0,0,.4);border:1px solid var(--border2);color:#fff;padding:11px 12px;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px">
           </div>
           <div>
