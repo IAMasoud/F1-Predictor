@@ -416,7 +416,7 @@ function startLocalServer() {
 // ─── Stopping (cloud runs only) ────────────────────────────────────────
 // The snapshot on connect can still show the previous session's "Ends", so only a live
 // change to Finalised or Ends, after this run has seen the session start, stops the bridge.
-let sawStart = false, stopping = false;
+let sawStart = false, stopping = false, gotSnapshot = false, failStreak = 0;
 function onSessionStatus(status, live) {
   if (!status) return;
   log('🚦 Session status:', status, live ? '' : '(snapshot)');
@@ -431,6 +431,8 @@ function stopBridge(afterMs, why) {
   log(`🏁 Stopping in ${Math.round(afterMs / 60000)} min: ${why}`);
   setTimeout(async () => {
     await flushToSupabase().catch(() => {});
+    // A cloud run that never got F1's data counts as failed, so Pit Wall and the scan show it.
+    if (runMinutes && !gotSnapshot) { log('❌ Never received F1 data in this run'); process.exit(1); }
     log('👋 Done');
     process.exit(0);
   }, afterMs);
@@ -468,6 +470,8 @@ async function main() {
     // type 3 = completion (the subscription SNAPSHOT — all feeds at once)
     if (m.type === 3 && m.result) {
       log('📦 Initial snapshot received');
+      gotSnapshot = true;
+      failStreak = 0;
       Object.entries(m.result).forEach(([feed, data]) => {
         if (feed.endsWith('.z') && typeof data === 'string') mergeFeed(feed.slice(0, -2), decompressZ(data));
         else if (feed === 'SessionStatus') onSessionStatus(data?.Status, false);
@@ -500,7 +504,7 @@ async function main() {
   ws.on('close', (code, reason) => {
     log('🔌 WebSocket closed:', code, reason?.toString());
     log('   Reconnecting in 5 seconds…');
-    setTimeout(main, 5000);
+    setTimeout(start, 5000);
   });
 
   ws.on('error', (err) => {
@@ -522,8 +526,15 @@ if (runMinutes) {
   setTimeout(() => stopBridge(0, 'time limit reached'), runMinutes * 60000);
 }
 
-main().catch(err => {
-  console.error('💥 Fatal error:', err);
-  console.error('   Retrying in 10 seconds…');
-  setTimeout(() => main().catch(e => console.error(e)), 10000);
-});
+// Retry a failed start every 10 seconds. In the cloud, give up after 3 refusals in a row
+// (F1 blocks some data-centre addresses) instead of waiting out the whole session.
+function start() {
+  main().catch(err => {
+    console.error('💥 Fatal error:', err.message || err);
+    failStreak += 1;
+    if (runMinutes && failStreak >= 3) { log('❌ F1 refused the connection 3 times; stopping'); process.exit(1); }
+    console.error('   Retrying in 10 seconds…');
+    setTimeout(start, 10000);
+  });
+}
+start();
