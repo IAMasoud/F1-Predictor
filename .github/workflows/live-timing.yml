@@ -1,0 +1,51 @@
+# Live timing in the cloud: runs live-bridge/ for one session, so the site has live positions
+# without a computer left on. The ops function starts it a few minutes before every session;
+# Pit Wall can also start it by hand. It stops when F1 marks the session over, or at `minutes`.
+name: Live timing
+run-name: Live timing · ${{ inputs.session }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      session:
+        description: Which session (shown in the run name)
+        required: false
+        default: Started by hand
+      minutes:
+        description: Stop after this many minutes at the latest
+        required: false
+        default: '120'
+      dry_run:
+        description: Log what it would save instead of saving it
+        type: boolean
+        required: false
+        default: false
+
+# One session at a time: a newer start replaces a run that is still going.
+concurrency:
+  group: live-timing
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 245
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: live-bridge/package-lock.json
+      - run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: live-bridge
+      - run: node live-bridge.js
+        working-directory: live-bridge
+        env:
+          BRIDGE_KEY: ${{ secrets.BRIDGE_KEY }}
+          RUN_MINUTES: ${{ inputs.minutes }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          LOCAL_HTTP_PORT: '3001'
