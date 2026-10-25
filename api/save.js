@@ -7,6 +7,7 @@
 // the server. The browser (and the live bridge, with its key) send rows here; they
 // are validated, trimmed to known fields and written with the server key.
 import { isAllowedOrigin, clientIp, rateLimited, sb } from './_guard.js';
+import { loadSeason } from '../season.js';
 
 // Pre-race stages only: a prediction saved after the race ('final') would be made with the result known.
 const STAGES = new Set(['beforeQuali', 'beforeSprintQ', 'afterSprintQ', 'afterSprint', 'afterQuali']);
@@ -98,6 +99,13 @@ export default async function handler(req, res) {
   try {
     if (type === 'prediction') {
       body = predictionRow(row);
+      // Once the race (or sprint) has started, a new call would be made with the race in view:
+      // it is not saved, so it can never replace the call made before the start.
+      const { races } = await loadSeason();
+      const r = races.find(x => x.circuitId === body.circuit_id && Number(x.round) === body.round);
+      const at = (d, t) => (d && t ? Date.parse(`${d}T${t}:00Z`) : null);
+      const start = body.pred_type === 'sprint' ? at(r?.sprintDate, r?.sprintUTC) : at(r?.date, r?.raceUTC);
+      if (start && Date.now() >= start) return res.status(409).json({ error: 'The race has started, so new calls are not saved' });
       path = 'predictions?on_conflict=circuit_id,round,pred_type,stage';
     } else if (type === 'session') {
       body = sessionRow(row);
