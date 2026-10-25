@@ -4,7 +4,27 @@
  * Canary: F1PRED-AM-2026-9f3c2a7b4e
  */
 import { generateText } from './_ai.js';
-import { isAllowedOrigin, clientIp, rateLimited } from './_guard.js';
+import { isAllowedOrigin, clientIp, rateLimited, sb } from './_guard.js';
+import { loadSeason } from '../season.js';
+
+/* A live call (Live screen, stage 'live') is kept so everyone sees the latest one. Only driver codes
+   that are in the race right now and plain numbers are stored, and only while the race is running. */
+async function keepLiveCall(circuitId, prompt, text, model) {
+  let parsed; try { parsed = JSON.parse(text); } catch { return; }
+  const { season, races } = await loadSeason();
+  const race = races.find(r => r.circuitId === circuitId);
+  const start = race ? Date.parse(`${race.date}T${race.raceUTC || '12:00'}:00Z`) : NaN;
+  if (!(Date.now() >= start - 10 * 60e3 && Date.now() <= start + 4 * 3600e3)) return;
+  const rows = await (await sb(`sessions?circuit_id=eq.${circuitId}&year=eq.${season}&session_name=eq.Race&select=grid_data&order=fetched_at.desc&limit=1`)).json().catch(() => []);
+  const onTrack = new Set((rows?.[0]?.grid_data || []).map(g => String(g.abbr || '').toUpperCase()));
+  const top10 = (Array.isArray(parsed?.top10) ? parsed.top10 : []).map(a => String(a || '').toUpperCase()).filter(a => onTrack.has(a)).slice(0, 10);
+  if (top10.length < 3) return;
+  const m = String(prompt).match(/Lap: (\d{1,3}) of (\d{1,3})/);
+  const win = Math.round(Number(parsed.winChance));
+  await sb('live_calls', { method: 'POST', prefer: 'return=minimal', body: {
+    season, circuit_id: circuitId, round: race.round, lap: m ? Math.min(+m[1], 100) : null, total_laps: m ? Math.min(+m[2], 100) : null,
+    top10, win_chance: win >= 1 && win <= 99 ? win : null, model: String(model || '').slice(0, 48) } });
+}
 
 // Vercel Hobby allows up to 60s per function — give AI calls room to finish.
 export const config = { maxDuration: 60 };
@@ -39,6 +59,7 @@ export default async function handler(req, res) {
   try {
     const out = await generateText({ system: SYSTEM, prompt, temperature: 0.8, deadlineMs: 40000, fast: true, // page gives up at 45s
       meta: { source: 'user', race: tag(race), stage: tag(stage) } });
+    if (tag(stage) === 'live' && tag(race)) await keepLiveCall(tag(race), prompt, out.text, out.model).catch(e => console.warn('[predict] live call not kept:', e.message));
     // Same shape the page already reads: data.choices[0].message.content
     res.status(200).json({
       choices: [{ message: { role: 'assistant', content: out.text } }],

@@ -372,6 +372,16 @@ async function scrLiveLoad(quiet){
       row = cands.sort((a, b) => Date.parse(b.fetched_at) - Date.parse(a.fetched_at))[0] || null;
     }
   }
+  // The latest live AI call anyone made for this race (every 15 s), so it shows for everyone.
+  if(Date.now() - (SCR.callAt || 0) > 15000){
+    SCR.callAt = Date.now();
+    try{
+      const c = (await sbGet(`live_calls?circuit_id=eq.${race.circuitId}&season=eq.${SEASON}&order=created_at.desc&limit=1`) || [])[0];
+      const at = c ? Date.parse(c.created_at) : 0;
+      if(c && Array.isArray(c.top10) && c.top10.length && at > (window._lastLiveAI?.circuitId === race.circuitId ? window._lastLiveAI.at || 0 : 0))
+        window._lastLiveAI = { circuitId: race.circuitId, top: c.top10[0], top10: c.top10, winChance: c.win_chance, lap: c.lap, totalLaps: c.total_laps, at };
+    }catch(e){}
+  }
   // A dropped connection on a phone shouldn't blank the tower: keep showing the last good data.
   if(!row && SCR.liveRow?.circuit_id === race.circuitId) row = SCR.liveRow;
   SCR.liveRow = row;
@@ -407,7 +417,7 @@ function scrLiveRender(race, live, row){
       const msg = SCR.liveAskMsg && Date.now() - SCR.liveAskMsg.at < 30000 ? SCR.liveAskMsg.text : '';
       const sub = msg ? `<span style="color:var(--loss)">${esc(msg)}</span>`
         : SCR.liveAsking ? 'Reading the gaps, tyres and stops…'
-        : ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}${ai.winChance ? ' · chance to win' : ' · predicted winner'}`
+        : ai ? `${ai.lap ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''} · ` : ''}${ai.winChance ? 'chance to win' : 'predicted winner'}${ai.at ? ` · ${scrAgo(ai.at)}` : ''}`
         : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start';
       const ask = isLive ? `<button type="button" class="btn2 ${ai ? '' : 'red'}" onclick="scrLiveAsk(this)" ${SCR.liveAsking ? 'disabled' : ''}>${SCR.liveAsking ? 'Thinking…' : ai ? 'Ask again' : 'Ask the AI now'}</button>` : '';
       h += `<div class="lv-ai"><div style="min-width:0"><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${sub}</div></div>
