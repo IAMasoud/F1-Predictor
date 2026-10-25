@@ -1,7 +1,7 @@
 // Live timing in the cloud: F1's live timing feed → the sessions table, with no computer on.
 // pg_cron calls POST /live every minute on race weekends (Bearer CRON_SECRET). During a session,
 // or while Pit Wall's "Start it now" lasts, one run connects to F1's SignalR feed over
-// Server-Sent Events, saves positions every 5 seconds for about 50 seconds, and ends. The next
+// Server-Sent Events, saves positions every 3 seconds for about 50 seconds, and ends. The next
 // minute's run picks up again from the full snapshot F1 sends on every connection.
 // Saves exactly what live-bridge/live-bridge.js saves (source 'f1-signalr-live').
 //   ?force=1      run even outside a session      ?dry=1   log instead of saving
@@ -16,7 +16,7 @@ const F1 = 'https://livetiming.formula1.com/signalrcore';
 const UA = 'BestHTTP';   // F1's own client; their firewall expects it
 const RS = '\x1e';       // SignalR record separator
 const FEEDS = ['TimingData', 'DriverList', 'SessionInfo', 'TrackStatus', 'LapCount', 'TimingAppData', 'SessionStatus'];
-const FLUSH_MS = 5000;
+const FLUSH_MS = 3000;
 
 type Json = Record<string, any>;
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;

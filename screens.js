@@ -328,9 +328,9 @@ async function scrJoin(){
 /* ═══════════════ 2A · LIVE ═══════════════ */
 const SCR_LIVE_NAME = { 'Grand Prix': 'Race', 'Sprint Race': 'Sprint', 'Sprint Qualifying': 'Sprint Qualifying', 'Qualifying': 'Qualifying' };
 const SCR_SESSION_TITLE = { Race: 'Race', Sprint: 'Sprint', Qualifying: 'Qualifying', 'Sprint Qualifying': 'Sprint qualifying' };
-// Every 5 seconds during a session (the cloud saves the timing that often), every 15 otherwise,
+// Every 3 seconds during a session (the cloud saves the timing that often), every 15 otherwise,
 // and at once when you come back to the app.
-const scrLiveEvery = () => { const race = loSelectedRace(); return race && getLiveSessionLabel(race) ? 5000 : 15000; };
+const scrLiveEvery = () => { const race = loSelectedRace(); return race && getLiveSessionLabel(race) ? 3000 : 15000; };
 function scrLiveStart(){
   clearTimeout(SCR.liveTimer);
   const tick = async () => {
@@ -359,7 +359,7 @@ async function scrLiveLoad(quiet){
   if(!quiet && !SCR.liveRow) el.innerHTML = '<p class="scr-sub" style="padding:20px 0">Loading the timing…</p>';
   const name = live ? SCR_LIVE_NAME[live] : null;
   let rows = [], row = null;
-  // During a session only that session's row is fetched, so the 5-second refresh stays small.
+  // During a session only that session's row is fetched, so the 3-second refresh stays small.
   if(name){
     try{ rows = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.${SEASON}&session_name=eq.${encodeURIComponent(name)}&order=fetched_at.desc&limit=3`) || []; }catch(e){}
     row = pickBestSessionRow(rows, name);
@@ -413,7 +413,7 @@ function scrLiveRender(race, live, row){
       return scrRow(x.abbr, right, x.pos);
     }).join('');
     const src = row.source === 'f1-signalr-live' ? 'Live timing feed' : row.source === 'openf1-sync' ? 'OpenF1' : row.source === 'f1com' ? 'Formula1.com' : 'Saved result';
-    h += `<p class="note">${src} · updated ${scrAgo(Date.parse(row.fetched_at))}${isLive ? ' · refreshes every 5 seconds' : ''}</p>`;
+    h += `<p class="note">${src} · updated ${scrAgo(Date.parse(row.fetched_at))}${isLive ? ' · refreshes every 3 seconds' : ''}</p>`;
   } else {
     const sessions = loSessions(race), nx = sessions.find(s => !(s.end && Date.now() >= s.end));
     const sr = SEASON_RACES[race.circuitId] || {};

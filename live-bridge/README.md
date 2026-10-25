@@ -39,7 +39,7 @@ Then open `.env` and fill in:
 Live timing runs in Supabase, so no computer has to stay on: the `live` edge function
 (`supabase/functions/live/`) does the same job as this script. The pg_cron job `live-cloud` calls it
 every minute from Friday to Sunday; during a session each run connects to F1's feed (Server-Sent
-Events), saves positions every 5 seconds for about 50 seconds, and ends, and the next minute's run
+Events), saves positions every 3 seconds for about 50 seconds, and ends, and the next minute's run
 carries on. Pit Wall → Health and reports shows its runs and can start it by hand for 2 hours.
 F1 blocks GitHub Actions machines, so the GitHub workflow (`.github/workflows/live-timing.yml`) is
 not used. This script is the backup: run it on your computer if the cloud runs ever fail.
