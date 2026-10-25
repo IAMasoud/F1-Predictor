@@ -110,6 +110,9 @@ body[data-screen="pred"] .pane{display:none!important}
 .lv-top .big{font-size:56px}
 .lv-top .big span{color:var(--dim)}
 .lv-flag{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:0 12px;border-radius:15px;background:var(--card);font:600 14px 'Barlow',sans-serif;white-space:nowrap}
+.lv-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.lv-refresh{min-height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--border2);background:none;color:var(--text);font:600 14px 'Barlow',sans-serif;cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1)}
+.lv-refresh:active{transform:scale(.97)}.lv-refresh:disabled{opacity:.6;cursor:default}
 .lv-flag i{width:9px;height:9px;border-radius:50%;background:var(--dim)}
 .lv-flag.live i{background:var(--lamp)}.lv-flag.yellow i{background:#ffc93c}.lv-flag.green i{background:var(--gain)}.lv-flag.red i{background:var(--lamp)}
 .lv-rc{display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 14px;border-radius:12px;background:var(--card);font:500 15px/1.35 'Barlow',sans-serif}

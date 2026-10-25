@@ -64,6 +64,7 @@ const TYRE: Json = { SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 
 
 export class Feed {
   drivers: Json = {}; timing: Json = {}; stints: Json = {}; track: Json | null = null; session: Json | null = null; status = '';
+  curLap: number | null = null;   // F1's own lap counter (the lap the leader is on), as shown on TV
   seeded: Json = {};   // pit counts already saved for this session by an earlier run
   constructor(public rounds: Json) {}
 
@@ -105,6 +106,7 @@ export class Feed {
       this.session = { circuitId, round: this.rounds[circuitId] || null, name, totalLaps: data.NumberOfLaps || this.session?.totalLaps || null, meeting: data.Meeting?.Name || '' };
     } else if (feed === 'LapCount') {
       if (this.session && data.TotalLaps) this.session.totalLaps = data.TotalLaps;
+      if (typeof data.CurrentLap === 'number') this.curLap = data.CurrentLap;
     } else if (feed === 'SessionStatus') {
       this.status = String(data.Status || this.status);
     }
@@ -123,7 +125,7 @@ export class Feed {
         pos: t.pos, abbr, lap: t.lap, inPit: t.inPit,
         pitCount: Math.max(t.pits || 0, seed.pitCount || 0), lastPitLap: Math.max(t.lastPitLap || 0, seed.lastPitLap || 0),
         gap, tyre: TYRE[String(last?.Compound || '').toUpperCase()] || null, tyreAge: last?.TotalLaps ?? null,
-        totalLaps: s.totalLaps || null, flag: /^[A-Za-z ]{1,20}$/.test(this.track?.message || '') ? this.track!.message : null,
+        totalLaps: s.totalLaps || null, curLap: this.curLap, flag: /^[A-Za-z ]{1,20}$/.test(this.track?.message || '') ? this.track!.message : null,
       };
     }).filter(g => /^[A-Z]{3}$/.test(g.abbr) && g.pos > 0 && g.pos < 99).sort((a, b) => a.pos - b.pos)
       // Leave out empty values, like the Mac bridge's rows (saved through api/save.js).

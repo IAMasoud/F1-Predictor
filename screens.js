@@ -328,10 +328,27 @@ async function scrJoin(){
 /* ═══════════════ 2A · LIVE ═══════════════ */
 const SCR_LIVE_NAME = { 'Grand Prix': 'Race', 'Sprint Race': 'Sprint', 'Sprint Qualifying': 'Sprint Qualifying', 'Qualifying': 'Qualifying' };
 const SCR_SESSION_TITLE = { Race: 'Race', Sprint: 'Sprint', Qualifying: 'Qualifying', 'Sprint Qualifying': 'Sprint qualifying' };
+// Every 5 seconds during a session (the cloud saves the timing that often), every 15 otherwise,
+// and at once when you come back to the app.
+const scrLiveEvery = () => { const race = loSelectedRace(); return race && getLiveSessionLabel(race) ? 5000 : 15000; };
 function scrLiveStart(){
-  clearInterval(SCR.liveTimer);
-  scrLiveLoad();
-  SCR.liveTimer = setInterval(() => { if(!document.hidden && document.body.dataset.screen === 'live') scrLiveLoad(true); }, 15000);
+  clearTimeout(SCR.liveTimer);
+  const tick = async () => {
+    if(document.body.dataset.screen !== 'live') return;
+    if(!document.hidden) await scrLiveLoad(true).catch(() => {});
+    if(document.body.dataset.screen === 'live') SCR.liveTimer = setTimeout(tick, scrLiveEvery());
+  };
+  scrLiveLoad().catch(() => {}).finally(() => { if(document.body.dataset.screen === 'live') SCR.liveTimer = setTimeout(tick, scrLiveEvery()); });
+  if(!SCR.liveVis){
+    SCR.liveVis = true;
+    document.addEventListener('visibilitychange', () => { if(!document.hidden && document.body.dataset.screen === 'live') scrLiveLoad(true).catch(() => {}); });
+  }
+}
+async function scrLiveRefresh(btn){
+  if(btn){ btn.disabled = true; btn.textContent = 'Updating…'; }
+  SCR.refreshedAt = Date.now();
+  await scrLiveLoad(true).catch(() => {});
+  setTimeout(() => { const b = document.querySelector('#vLive .lv-refresh'); if(b) b.textContent = 'Refresh'; }, 1800);
 }
 async function scrLiveLoad(quiet){
   const el = $('vLive');
@@ -340,14 +357,23 @@ async function scrLiveLoad(quiet){
   if(!race){ el.innerHTML = '<div class="empty"><b>No race selected.</b></div>'; return; }
   const live = getLiveSessionLabel(race);
   if(!quiet && !SCR.liveRow) el.innerHTML = '<p class="scr-sub" style="padding:20px 0">Loading the timing…</p>';
-  let rows = [];
-  try{ rows = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.${SEASON}&order=fetched_at.desc&limit=20`) || []; }catch(e){}
-  let row = null;
-  if(live) row = pickBestSessionRow(rows, SCR_LIVE_NAME[live]);
-  if(!row){
-    const cands = ['Race', 'Sprint', 'Qualifying', 'Sprint Qualifying'].map(n => pickBestSessionRow(rows, n)).filter(Boolean);
-    row = cands.sort((a, b) => Date.parse(b.fetched_at) - Date.parse(a.fetched_at))[0] || null;
+  const name = live ? SCR_LIVE_NAME[live] : null;
+  let rows = [], row = null;
+  // During a session only that session's row is fetched, so the 5-second refresh stays small.
+  if(name){
+    try{ rows = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.${SEASON}&session_name=eq.${encodeURIComponent(name)}&order=fetched_at.desc&limit=3`) || []; }catch(e){}
+    row = pickBestSessionRow(rows, name);
   }
+  if(!row){
+    try{ rows = await sbGet(`sessions?circuit_id=eq.${race.circuitId}&year=eq.${SEASON}&order=fetched_at.desc&limit=20`) || []; }catch(e){}
+    if(name) row = pickBestSessionRow(rows, name);
+    if(!row){
+      const cands = ['Race', 'Sprint', 'Qualifying', 'Sprint Qualifying'].map(n => pickBestSessionRow(rows, n)).filter(Boolean);
+      row = cands.sort((a, b) => Date.parse(b.fetched_at) - Date.parse(a.fetched_at))[0] || null;
+    }
+  }
+  // A dropped connection on a phone shouldn't blank the tower: keep showing the last good data.
+  if(!row && SCR.liveRow?.circuit_id === race.circuitId) row = SCR.liveRow;
   SCR.liveRow = row;
   scrLiveRender(race, live, row);
 }
@@ -360,16 +386,21 @@ function scrLiveRender(race, live, row){
   let h = '';
   if(row){
     const g = (row.grid_data || []).filter(x => x.abbr && x.pos).sort((a, b) => a.pos - b.pos);
-    const lap = Math.max(0, ...g.map(x => +x.lap || 0));
     const total = g.find(x => x.totalLaps)?.totalLaps || (row.session_name === 'Race' ? CIRCUIT_TOTAL_LAPS[race.circuitId] : null);
     const racey = row.session_name === 'Race' || row.session_name === 'Sprint';
+    // The lap the leader is on, like the TV graphic: F1's own lap counter when the feed gives it,
+    // otherwise one more than the leader's completed laps.
+    const done = Math.max(0, ...g.map(x => +x.lap || 0)), cur = +(g.find(x => x.curLap)?.curLap) || 0;
+    const lap = cur || (isLive && racey ? Math.min(total || 99, done + 1) : done);
     const title = SCR_SESSION_TITLE[row.session_name] || row.session_name;
     const big = isLive && racey && lap ? `LAP ${lap}${total ? `<span>/${total}</span>` : ''}` : esc(title.toUpperCase());
     const FLAG = { AllClear: ['green', 'Green flag'], Yellow: ['yellow', 'Yellow flag'], SCDeployed: ['yellow', 'Safety car'], VSCDeployed: ['yellow', 'Virtual safety car'], VSCEnding: ['yellow', 'VSC ending'], Red: ['red', 'Red flag'] };
     const tf = isLive && FLAG[g.find(x => x.flag)?.flag];
     const flag = tf ? `<span class="lv-flag ${tf[0]}"><i></i>${tf[1]}</span>` : isLive ? '<span class="lv-flag live"><i></i>Live</span>' : `<span class="lv-flag"><i></i>Finished</span>`;
     const hasGap = g.some(x => x.gap), hasTyre = g.some(x => x.tyre), hasPits = racey && g.some(x => x.pitCount != null);
-    h += `<div class="lv-top"><div style="min-width:0"><div class="lbl">${esc(race.name)} · ${esc(title.toLowerCase())}</div><div class="big">${big}</div></div>${flag}</div>`;
+    const fresh = SCR.refreshedAt && Date.now() - SCR.refreshedAt < 1500;
+    h += `<div class="lv-top"><div style="min-width:0"><div class="lbl">${esc(race.name)} · ${esc(title.toLowerCase())}</div><div class="big">${big}</div></div>
+      <div class="lv-acts">${flag}<button type="button" class="lv-refresh" onclick="scrLiveRefresh(this)">${fresh ? 'Updated' : 'Refresh'}</button></div></div>`;
     if(racey && (isLive || ai)){
       h += `<div class="lv-ai"><div><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${ai ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''}` : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start'}</div></div>
         ${ai ? `<b>${esc(ai.top)}${ai.confidence ? ` ${ai.confidence}%` : ''}</b>` : isLive ? '<button type="button" class="btn2 red" onclick="scrLiveAsk(this)">Ask the AI now</button>' : ''}</div>`;
@@ -382,7 +413,7 @@ function scrLiveRender(race, live, row){
       return scrRow(x.abbr, right, x.pos);
     }).join('');
     const src = row.source === 'f1-signalr-live' ? 'Live timing feed' : row.source === 'openf1-sync' ? 'OpenF1' : row.source === 'f1com' ? 'Formula1.com' : 'Saved result';
-    h += `<p class="note">${src} · updated ${scrAgo(Date.parse(row.fetched_at))}${isLive ? ' · refreshes every 15 seconds' : ''} · <button type="button" class="link" onclick="scrLiveLoad()">Refresh</button></p>`;
+    h += `<p class="note">${src} · updated ${scrAgo(Date.parse(row.fetched_at))}${isLive ? ' · refreshes every 5 seconds' : ''}</p>`;
   } else {
     const sessions = loSessions(race), nx = sessions.find(s => !(s.end && Date.now() >= s.end));
     const sr = SEASON_RACES[race.circuitId] || {};
