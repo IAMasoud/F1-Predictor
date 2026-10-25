@@ -184,7 +184,7 @@ async function readSettings() {
 function deliveryStatus(s) {
   const tail = v => (v ? `…${String(v).slice(-3)}` : null);
   return {
-    telegram: { on: !!(s.telegram_token && s.telegram_chat), bot: !!s.telegram_token, chat: tail(s.telegram_chat) },
+    telegram: { on: !!(s.telegram_token && s.telegram_chat), bot: !!s.telegram_token, name: s.telegram_bot || null, chat: tail(s.telegram_chat) },
     discord: { on: !!s.discord_webhook },
     whatsapp: { on: !!(s.whatsapp_phone && s.whatsapp_key), phone: tail(s.whatsapp_phone) },
   };
@@ -209,6 +209,17 @@ async function liveStatus(s) {
     }));
   } catch { out.error = 'GitHub did not answer'; }
   return out;
+}
+
+/* The team's Telegram bot and the Assistant tab: commands run in the `bot` edge function. */
+async function bot(query, payload = {}) {
+  const r = await fetch(`${process.env.SB_URL}/functions/v1/bot${query}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${process.env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload), signal: AbortSignal.timeout(58000),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `The bot answered ${r.status}`);
+  return body;
 }
 
 /* Team invites and applications (owner only). */
@@ -359,6 +370,14 @@ export default async function handler(req, res) {
         const rows = await json('admin_invites?select=id,token,role,created_at,expires_at,used_at,revoked&order=created_at.desc&limit=50');
         return res.json({ invites: (rows || []).map(i => ({ id: i.id, role: i.role, created_at: i.created_at, expires_at: i.expires_at, used_at: i.used_at,
           state: inviteState(i), link: inviteState(i) === 'waiting' ? `${SITE}/join#t=${i.token}` : null })) });
+      }
+      if (view === 'assistant') {
+        const [s, link, recent] = await Promise.all([
+          readSettings(),
+          json(`telegram_links?user_id=eq.${me.id}&select=username,linked_at`).catch(() => []),
+          json(`bot_log?user_id=eq.${me.id}&select=ts,via,command,ok&order=ts.desc&limit=8`).catch(() => []),
+        ]);
+        return res.json({ bot: s.telegram_token && s.telegram_bot ? s.telegram_bot : null, linked: link?.[0] || null, recent: recent || [], owner: me.owner });
       }
       if (view === 'members') {
         if (!me.owner) return ownerOnly();
@@ -528,21 +547,24 @@ export default async function handler(req, res) {
         }
         if (rows.length) await json('app_settings?on_conflict=key', { method: 'POST', body: rows, prefer: 'resolution=merge-duplicates,return=minimal' });
         if (clear.length) await json(`app_settings?key=in.(${clear.join(',')})`, { method: 'DELETE', prefer: 'return=minimal' });
-        return res.json({ ok: true, delivery: deliveryStatus(await readSettings()) });
+        // A new bot token: point that bot at our bot function so it answers commands.
+        const setup = rows.some(r => r.key === 'telegram_token') ? await bot('?setup=1').catch(e => ({ ok: false, error: e.message })) : null;
+        return res.json({ ok: true, delivery: deliveryStatus(await readSettings()), ...(setup ? { bot: setup } : {}) });
       }
-      // Telegram: after messaging the bot once, find that chat and save it.
-      if (action === 'telegram_chat') {
-        if (!me.owner) return ownerOnly();
+      // Telegram: a one-time link that connects this admin's own Telegram chat to the team bot.
+      if (action === 'telegram_link') {
         const s = await readSettings();
-        if (!s.telegram_token) return res.status(400).json({ error: 'Save the bot token first' });
-        const r = await fetch(`https://api.telegram.org/bot${s.telegram_token}/getUpdates?limit=50`, { signal: AbortSignal.timeout(10000) });
-        const j = await r.json().catch(() => ({}));
-        if (!j.ok) return res.status(400).json({ error: 'Telegram did not accept that bot token' });
-        const msg = (j.result || []).map(u => u.message || u.channel_post || u.my_chat_member).filter(Boolean).pop();
-        const chat = msg?.chat?.id;
-        if (!chat) return res.status(404).json({ error: 'No message found yet. Open your bot in Telegram, press Start or send it any message, then try again.' });
-        await json('app_settings?on_conflict=key', { method: 'POST', body: [{ key: 'telegram_chat', value: String(chat), updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' });
-        return res.json({ ok: true, delivery: deliveryStatus(await readSettings()) });
+        if (!s.telegram_token || !s.telegram_bot) return res.status(400).json({ error: me.owner ? 'Save the bot token first (Health and reports)' : 'The owner hasn’t set up the Telegram bot yet' });
+        const code = randomBytes(12).toString('base64url');
+        await json('telegram_codes', { method: 'POST', prefer: 'return=minimal', body: { code, user_id: me.id, expires_at: new Date(Date.now() + 30 * 60e3).toISOString() } });
+        await json(`telegram_codes?expires_at=lt.${new Date().toISOString()}`, { method: 'DELETE', prefer: 'return=minimal' }).catch(() => {});
+        return res.json({ ok: true, url: `https://t.me/${s.telegram_bot}?start=${code}`, bot: s.telegram_bot });
+      }
+      // Assistant: the same commands as the Telegram bot (scan, report, status...).
+      if (action === 'command') {
+        const text = String(body.text || '').trim().slice(0, 300);
+        if (!text) return res.status(400).json({ error: 'Type a command' });
+        return res.json(await bot('', { text, user_id: me.id }));
       }
       // Live timing: start a run now (2 hours), e.g. when a session started without it.
       if (action === 'bridge_start') {

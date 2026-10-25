@@ -154,6 +154,15 @@
   .check:first-child{border-top:0}.check .dot{margin-top:5px}
   .check small{display:block;color:var(--ink-3);font-size:12.5px;margin-top:2px}
   .tag.fix{background:var(--gain-bg);color:var(--gain)}.tag.found{background:var(--loss-bg);color:var(--loss)}
+  /* Assistant: the same commands as the Telegram bot */
+  .chat{display:flex;flex-direction:column;gap:8px;min-height:260px;max-height:58vh;overflow-y:auto;padding:4px 0 10px}
+  .cm{max-width:88%;padding:10px 12px;border-radius:12px;background:var(--panel-2);font:500 14px/1.5 'Barlow';white-space:pre-wrap;overflow-wrap:anywhere}
+  .cm.me{align-self:flex-end;background:var(--lamp);color:#fff;border-bottom-right-radius:4px}
+  .cm.bot{align-self:flex-start;border-bottom-left-radius:4px}
+  .cm.wait{color:var(--ink-3)}
+  .cm .btn{margin-top:8px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .chips .btn{height:32px;padding:0 11px;font-size:12.5px}
   dialog .row-end{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
   dialog select.pill{max-width:100%}
   #app{grid-template-columns:248px minmax(0,1fr)}
@@ -369,9 +378,10 @@ const ICON = {
   subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
   health:'<path d="M12 21s-7-4.4-9-9.2C1.6 8.3 3.6 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.4 3.3 4 6.8C19 16.6 12 21 12 21z"/>',
   team:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .3 5.5 2.6 5.5 5.8"/>',
+  assistant:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   members:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.4"/><path d="M5.5 16.5c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8M15 9h3M15 13h3"/>',
 };
-const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['team','Admins'],['members','Members']];
+const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['assistant','Assistant'],['team','Admins'],['members','Members']];
 const pagesFor = () => PAGES.filter(([k]) => k !== 'members' || ME?.owner);
 function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
 function lineChart(points, { h = 260 } = {}){
@@ -692,6 +702,53 @@ const RENDER = {
     if(d.canManage){ wireDelivery(); wireLive(); }
   },
 
+  async assistant(main){
+    const d = await api({ view:'assistant' });
+    const did = { scan:'Scan', report:'Weekly report', status:'Status', weekend:'This weekend', visitors:'Visitors', retry:'Retry the AI', email:'Race report', help:'Help' };
+    main.innerHTML = `
+      <div class="top"><h1>Assistant</h1><span class="note">Type a command here, or send it to the team bot in Telegram</span></div>
+      <div class="grid g2">
+        <section class="panel"><h2>Ask Pit Wall <span>Same commands as the Telegram bot</span></h2>
+          <div class="chat" id="chatLog" aria-live="polite"></div>
+          <div class="chips">${['Scan now','Weekly report','Status','This weekend','Visitors','Retry the AI','Race report','Help'].map(t => `<button type="button" class="btn" data-say="${t}">${t}</button>`).join('')}</div>
+          <form class="inline" id="chatForm"><input class="field" id="chatIn" placeholder="Try “send me a report now”" aria-label="Command" autocomplete="off" maxlength="300"><button class="btn red" type="submit">Send</button></form>
+        </section>
+        <section class="panel"><h2>Telegram <span>${d.bot ? `@${esc(d.bot)}` : 'Not set up yet'}</span></h2>
+          ${!d.bot ? `<div class="empty">${d.owner ? 'Set up the team bot first: Health and reports, Where the report goes, Telegram.' : 'The owner hasn’t set up the team bot yet.'}</div>`
+            : d.linked ? `<div class="chan"><h3><span class="badge">Connected</span><span class="note">${d.linked.username ? `as @${esc(d.linked.username)}, ` : ''}since ${shortDate(d.linked.linked_at)}</span></h3>
+                <p class="help">Open the bot in Telegram and tap a button, or type something like “scan now”.</p>
+                <div class="inline"><a class="btn" style="text-decoration:none" href="https://t.me/${esc(d.bot)}" target="_blank" rel="noopener">Open the bot</a><button class="btn" id="tgLink">Connect again</button></div></div>`
+            : `<div class="chan"><h3><span class="badge quiet">Not connected</span></h3>
+                <p class="help">Connect your own Telegram to the team bot. It only answers people who connected from Pit Wall.</p>
+                <div class="inline"><button class="btn red" id="tgLink">Connect my Telegram</button></div></div>`}
+          <div class="chan"><h3>How it works</h3>
+            <ol class="steps"><li>Every team member uses the same bot, connected to their own Pit Wall account.</li>
+              <li>Commands do the same thing here and in Telegram, and anyone on the team can run them.</li>
+              <li>The weekly report and scan alerts go to ${d.owner ? 'you' : 'the owner'}; others get answers to what they ask.</li></ol></div>
+          <div class="chan"><h3>Your recent commands</h3>
+            ${(d.recent || []).map(r => `<div class="check"><span class="dot ${r.ok === false ? 'bad' : ''}"></span><div>${esc(did[r.command] || r.command)}<small>${r.via === 'telegram' ? 'Telegram' : 'Pit Wall'} · ${ago(r.ts)}</small></div></div>`).join('') || '<div class="empty">None yet.</div>'}</div>
+        </section>
+      </div>`;
+    const log = $('chatLog');
+    const draw = () => {
+      log.innerHTML = CHAT.map(m => `<div class="cm ${m.me ? 'me' : 'bot'}${m.wait ? ' wait' : ''}">${esc(m.text)}${m.link ? `<br><a class="btn" style="text-decoration:none" href="${esc(m.link.url)}" target="_blank" rel="noopener">${esc(m.link.label)}</a>` : ''}</div>`).join('')
+        || '<div class="cm bot">Hi! Ask me to run a scan, make the weekly report, or show the status. Tap a button below or type.</div>';
+      log.scrollTop = log.scrollHeight;
+    };
+    const say = async text => {
+      text = text.trim(); if(!text || CHAT.some(m => m.wait)) return;
+      CHAT.push({ me: true, text }, { wait: true, text: /scan|check|health/i.test(text) ? 'Running the scan, about 30 seconds…' : /report|pdf|weekly/i.test(text) && !/race report|newsletter/i.test(text) ? 'Making the report, about 15 seconds…' : 'Working…' });
+      draw();
+      try{ const r = await api({ action:'command' }, { text }); CHAT.pop(); CHAT.push({ text: r.text || 'Done.', link: r.link || null }); }
+      catch(e){ CHAT.pop(); CHAT.push({ text: `That didn’t work: ${e.message}` }); }
+      CHAT.splice(0, Math.max(0, CHAT.length - 40)); draw();
+    };
+    draw();
+    main.querySelectorAll('[data-say]').forEach(b => b.onclick = () => say(b.dataset.say));
+    $('chatForm').onsubmit = e => { e.preventDefault(); const v = $('chatIn').value; $('chatIn').value = ''; say(v); };
+    if($('tgLink')) $('tgLink').onclick = () => connectTelegram();
+  },
+
   async team(main){
     const [d, inv] = await Promise.all([api({ view:'admins' }), ME?.owner ? api({ view:'invites' }) : Promise.resolve({ invites: [] })]);
     const STATE = { waiting:['ai','Waiting'], used:['none','Used'], expired:['none','Expired'], cancelled:['none','Cancelled'] };
@@ -856,6 +913,15 @@ function reviewDialog(a){
   };
 }
 
+/* Assistant chat, kept while you move between pages. */
+const CHAT = [];
+/* Connect this admin's own Telegram to the team bot with a one-time link (valid 30 minutes). */
+async function connectTelegram(){
+  const w = window.open('', '_blank');
+  try{ const r = await api({ action:'telegram_link' }, {}); if(w) w.location = r.url; else location.href = r.url; toast('Press Start in Telegram, then come back here.'); }
+  catch(e){ if(w) w.close(); toast(e.message); }
+}
+
 /* Delivery settings for the weekly report. Tokens are sent to the server once and never shown again. */
 function deliveryHtml(dv, can){
   const state = (on, text) => `<span class="badge ${on ? '' : 'quiet'}">${on ? 'On' : 'Off'}</span>${text ? `<span class="note">${text}</span>` : ''}`;
@@ -865,10 +931,10 @@ function deliveryHtml(dv, can){
       <p class="help">Free through CallMeBot. WhatsApp only takes a text from it, so you get the week’s numbers and a link to the PDF.</p>
       <ol class="steps"><li>Open <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot’s WhatsApp page</a> and follow its steps: you add their number to your contacts and send it a set message on WhatsApp.</li><li>It replies with your API key.</li><li>Enter your WhatsApp number (with the country code) and that key here.</li></ol>
       <div class="inline"><input class="field" id="waPhone" inputmode="tel" placeholder="+20 1xx xxx xxxx" aria-label="Your WhatsApp number"><input class="field" id="waKey" placeholder="API key" aria-label="CallMeBot API key" spellcheck="false"><button class="btn" data-save="wa">Save</button></div></div>
-    <div class="chan"><h3>Telegram ${state(dv.telegram?.on, dv.telegram?.bot && !dv.telegram?.on ? 'bot saved, chat not found yet' : '')}</h3>
-      <p class="help">Free, and the PDF arrives as a file.</p>
-      <ol class="steps"><li>In Telegram, open <b>@BotFather</b>, send <b>/newbot</b> and follow the two questions.</li><li>Paste the token it gives you here and save.</li><li>Open your new bot, press <b>Start</b>, then press <b>Find my chat</b>.</li></ol>
-      <div class="inline"><input class="field" id="tgToken" type="password" placeholder="123456789:ABC…" aria-label="Telegram bot token" spellcheck="false"><button class="btn" data-save="tg">Save</button><button class="btn" id="tgFind" ${dv.telegram?.bot ? '' : 'disabled'}>Find my chat</button></div></div>
+    <div class="chan"><h3>Telegram ${state(dv.telegram?.on, dv.telegram?.bot && !dv.telegram?.on ? 'bot saved, connect your Telegram' : dv.telegram?.name ? `@${esc(dv.telegram.name)}` : '')}</h3>
+      <p class="help">Free, and the PDF arrives as a file. It’s also the team bot: you can send it commands like “scan now” (see Assistant).</p>
+      <ol class="steps"><li>In Telegram, open <b>@BotFather</b>, send <b>/newbot</b> and follow the two questions.</li><li>Paste the token it gives you here and save.</li><li>Press <b>Connect my Telegram</b>, then <b>Start</b> in Telegram.</li></ol>
+      <div class="inline"><input class="field" id="tgToken" type="password" placeholder="123456789:ABC…" aria-label="Telegram bot token" spellcheck="false"><button class="btn" data-save="tg">Save</button><button class="btn" id="tgConnect" ${dv.telegram?.bot ? '' : 'disabled'}>Connect my Telegram</button></div></div>
     <div class="chan"><h3>Discord ${state(dv.discord?.on)}</h3>
       <p class="help">Free, PDF attached. In your server: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.</p>
       <div class="inline"><input class="field" id="dcHook" type="password" placeholder="https://discord.com/api/webhooks/…" aria-label="Discord webhook URL" spellcheck="false"><button class="btn" data-save="dc">Save</button></div></div>
@@ -880,10 +946,13 @@ function wireDelivery(){
   document.querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
     const k = b.dataset.save;
     if(k === 'wa'){ const phone = $('waPhone').value.replace(/[\s()-]/g, ''), key = $('waKey').value.trim(); if(!phone || !key) return toast('Enter your number and the API key'); save({ whatsapp_phone: phone, whatsapp_key: key }, 'WhatsApp saved'); }
-    if(k === 'tg'){ const t = $('tgToken').value.trim(); if(!t) return toast('Paste the bot token first'); save({ telegram_token: t, telegram_chat: '' }, 'Bot saved. Now open it in Telegram, press Start, then Find my chat.'); }
+    if(k === 'tg'){ const t = $('tgToken').value.trim(); if(!t) return toast('Paste the bot token first');
+      api({ action:'settings' }, { telegram_token: t, telegram_chat: '' })
+        .then(r => { toast(r.bot?.ok ? 'Bot saved. Now press Connect my Telegram.' : `Bot saved, but Telegram said: ${r.bot?.error || 'no answer'}`); go('health'); })
+        .catch(e => toast(e.message)); }
     if(k === 'dc'){ const u = $('dcHook').value.trim(); if(!u) return toast('Paste the webhook URL first'); save({ discord_webhook: u }, 'Discord saved'); }
   });
-  $('tgFind').onclick = async () => { try{ await api({ action:'telegram_chat' }, {}); toast('Found your chat. Telegram is on.'); go('health'); }catch(e){ toast(e.message); } };
+  $('tgConnect').onclick = () => connectTelegram();
   $('notifyTest').onclick = async e => {
     e.target.disabled = true;
     try{ const r = await api({ action:'notify_test' }, {}); const ok = Object.entries(r.results || {}).filter(([, v]) => v === 'ok').map(([k]) => k), bad = Object.entries(r.results || {}).filter(([, v]) => v !== 'ok');

@@ -519,13 +519,22 @@ async function signed(path: string, seconds: number) {
   return `${SB_URL}/storage/v1${j.signedURL}`;
 }
 
-async function weekly() {
+// deliver: false makes the PDF for one person (the bot's /report) without sending it to the
+// owner's channels; the report row keeps whatever delivery it already had.
+async function weekly({ deliver = true }: { deliver?: boolean } = {}) {
   const w = await gather();
   const pdf = await buildPdf(w);
   const path = `weekly/${w.end}.pdf`;
   await upload(path, pdf);
   const s = await settings();
   const link = await signed(path, 30 * 24 * 3600);
+  if (!deliver) {
+    const summary = { visitors: w.visitors, views: w.views, subscribers: w.subscribers, newSubs: w.newSubs, aiAttempts: w.aiAttempts, aiOk: w.aiOk, calls: w.calls, baselines: w.baselines,
+      weekRaces: w.weekRaces, scans: w.scans, scansOk: w.scansOk, fixed: w.fixed.length, open: w.open.length };
+    await db('weekly_reports?on_conflict=week_end', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+      body: { week_start: w.start, week_end: w.end, path, summary, created_at: new Date().toISOString() } });
+    return { ok: true, week: `${w.start}..${w.end}`, link, name: `F1-Predictor-week-${w.end}.pdf`, caption: caption(w) };
+  }
   const results = Object.values(channels(s)).some(Boolean) ? await sendPdf(s, pdf, `F1-Predictor-week-${w.end}.pdf`, caption(w), link) : {};
   const delivered = { sent: Object.entries(results).filter(([, v]) => v === 'ok').map(([k]) => k), failed: Object.fromEntries(Object.entries(results).filter(([, v]) => v !== 'ok')) };
   const summary = { visitors: w.visitors, views: w.views, subscribers: w.subscribers, newSubs: w.newSubs, aiAttempts: w.aiAttempts, aiOk: w.aiOk, calls: w.calls, baselines: w.baselines,
@@ -624,7 +633,10 @@ Deno.serve(async (req: Request) => {
   const task = new URL(req.url).searchParams.get('task');
   try {
     if (task === 'scan') return reply(await scan());
-    if (task === 'weekly') return reply(await weekly());
+    if (task === 'weekly') {
+      const body = await req.json().catch(() => ({}));
+      return reply(await weekly({ deliver: body.deliver !== false }));
+    }
     if (task === 'test') return reply(await testDelivery());
     if (task === 'bridge') {
       const body = await req.json().catch(() => ({}));
