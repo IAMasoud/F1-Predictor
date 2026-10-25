@@ -14,6 +14,14 @@ const SYSTEM = 'You are an expert F1 race analyst. Always respond with valid JSO
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: { message: 'Method not allowed' } });
 
+  // The owner's check that the Groq backup key works: Bearer CRON_SECRET and { test: 'groq' }.
+  if (req.body?.test === 'groq' && process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`) {
+    try {
+      const out = await generateText({ system: 'Reply with JSON only.', prompt: 'Reply with {"ok": true, "word": "box"}.', deadlineMs: 25000, only: 'groq', meta: { source: 'test' } });
+      return res.status(200).json({ ok: true, model: out.model, provider: out.provider, text: out.text.slice(0, 80) });
+    } catch (e) { return res.status(502).json({ ok: false, error: String(e.message).slice(0, 200) }); }
+  }
+
   if (!isAllowedOrigin(req)) {
     return res.status(403).json({ error: { message: 'Forbidden' } });
   }

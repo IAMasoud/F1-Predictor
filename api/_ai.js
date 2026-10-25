@@ -14,8 +14,9 @@ const GEMINI_MODELS = [
   { model: 'gemini-3.5-flash',         thinkingLevel: 'low' },
   { model: 'gemini-3.7-flash',         thinkingLevel: 'low' },
   { model: 'gemini-3.6-flash',         thinkingLevel: 'low' },
-  { model: 'gemini-flash-lite-latest', thinkingLevel: 'minimal' },
-  { model: 'gemini-3.1-flash-lite',    thinkingLevel: 'minimal' },
+  // The lite models answer fast but think less: Groq (when set up) is asked before them.
+  { model: 'gemini-flash-lite-latest', thinkingLevel: 'minimal', lite: true },
+  { model: 'gemini-3.1-flash-lite',    thinkingLevel: 'minimal', lite: true },
 ];
 const PER_ATTEMPT_MS = 30000;
 import { sb } from './_guard.js';
@@ -90,7 +91,7 @@ async function callGroq(key, { system, prompt, temperature }, timeoutMs) {
    pass longer waits than a visitor's Generate button does.
    Returns { text, model, provider }. Throws AIError (status 429 when every provider is rate-limited). */
 export async function generateText({ system = '', prompt, temperature = 0.8, maxTokens = 8192, deadlineMs = 40000,
-  waits = [0, 1500], perAttemptMs = PER_ATTEMPT_MS, meta }) {
+  waits = [0, 1500], perAttemptMs = PER_ATTEMPT_MS, meta, only }) {
   const started = Date.now();
   const left = () => deadlineMs - (Date.now() - started);
   const opts = { system, prompt, temperature, maxTokens };
@@ -114,6 +115,14 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
       return null;
     }
   };
+  // only: 'groq' checks the backup key on its own (the owner's test in api/predict.js).
+  if (only === 'groq') {
+    if (!groqKey) throw new AIError('GROQ_API_KEY is not set', 500);
+    const out = await tryGroq();
+    if (out) return out;
+    await logAttempts(attempts, meta);
+    throw new AIError(errors[0]?.msg || 'Groq did not answer', errors[0]?.status || 502);
+  }
   for (let pass = 0; geminiKey && pass < waits.length && left() >= 4000; pass++) {
     if (waits[pass]) {
       if (left() < waits[pass] + 6000) break;
@@ -121,6 +130,7 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
     }
     for (const m of GEMINI_MODELS) {
       if (left() < 4000) break;
+      if (m.lite && groqKey && !groqTried) { const out = await tryGroq(); if (out) return out; if (left() < 4000) break; }
       const t0 = Date.now();
       try {
         const out = await callGemini(m, geminiKey, opts, Math.min(left(), perAttemptMs));
@@ -138,7 +148,7 @@ export async function generateText({ system = '', prompt, temperature = 0.8, max
       }
     }
     // The backup provider goes right after the first full pass, before any waiting.
-    if (pass === 0 && groqKey && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
+    if (pass === 0 && groqKey && !groqTried && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
   }
   if (groqKey && !groqTried && left() >= 4000) { const out = await tryGroq(); if (out) return out; }
   await logAttempts(attempts, meta); // a success returned above, already logged
