@@ -690,7 +690,7 @@ const RENDER = {
         </section>
         <section class="panel" id="delivery"><h2>Where the report goes <span>${d.canManage ? 'Only you can change this' : 'Set by the owner'}</span></h2>${deliveryHtml(dv, d.canManage)}</section>
       </div>
-      <section class="panel" id="live"><h2>Live timing in the cloud <span>Runs on GitHub for each session, no computer needed</span></h2>${liveHtml(d.live || {}, d.canManage)}</section>`;
+      <section class="panel" id="live"><h2>Live timing in the cloud <span>Runs in Supabase during every session</span></h2>${liveHtml(d.live || {}, d.canManage)}</section>`;
     wireActions(main, () => go('health'));
     main.querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => { b.disabled = true; try{ await api({ action:'log_resolve' }, { id: +b.dataset.resolve }); go('health'); }catch(e){ toast(e.message); b.disabled = false; } });
     main.querySelectorAll('[data-report]').forEach(b => b.onclick = async () => {
@@ -963,36 +963,24 @@ function wireDelivery(){
   $('clearAll').onclick = () => { if(confirm('Stop sending the weekly report anywhere?')) save({ whatsapp_phone:'', whatsapp_key:'', telegram_token:'', telegram_chat:'', discord_webhook:'' }, 'Delivery turned off'); };
 }
 
-/* Live timing in the cloud: the GitHub token (owner), the latest runs, and a manual start. */
+/* Live timing in the cloud: runs by itself during sessions; the owner can also start it by hand. */
 function liveHtml(lv, can){
-  const RUN = r => r.status !== 'completed' ? ['ai', r.status === 'in_progress' ? 'Running' : 'Starting']
-    : r.conclusion === 'success' ? ['fix', 'Done'] : r.conclusion === 'cancelled' ? ['none', 'Replaced'] : ['found', 'Failed'];
-  const runs = (lv.runs || []).map(r => { const [cls, txt] = RUN(r);
-    return `<div class="call"><div class="what"><b>${esc(r.title)}</b><small><span class="tag ${cls}">${txt}</span><span>${ago(r.created_at)}</span></small></div>
-      <span class="acts"><a class="btn" style="text-decoration:none" href="${esc(r.url)}" target="_blank" rel="noopener">Open</a></span></div>`; }).join('');
-  const refused = (lv.refused || []).map(f => `<div class="call"><div class="what"><b>${esc(f.label)}</b><small><span class="tag found">Didn’t start</span><span>${esc(f.error || '')}</span><span>· ${ago(f.dispatched_at)}</span></small></div></div>`).join('');
-  const status = `<div class="chan"><h3>${lv.token && !lv.error ? '<span class="badge">On</span><span class="note">It starts 5 to 10 minutes before every session and stops when the session is over.</span>'
-    : `<span class="badge quiet">Off</span><span class="note">${esc(lv.error || (lv.token ? '' : 'Waiting for a GitHub token.'))}</span>`}</h3></div>`;
-  const setup = can ? `
-    <div class="chan"><p class="help">${lv.token ? 'To replace the token (for example when it expires), make a new one the same way and save it here.' : 'One-time setup on GitHub, about two minutes:'}</p>
-      <ol class="steps"><li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub’s new fine-grained token page</a>. Name it <b>F1 Predictor live timing</b> and pick an expiration (up to a year).</li>
-        <li>Repository access: <b>Only select repositories</b>, then <b>F1-Predictor</b>.</li>
-        <li>Permissions: <b>Actions</b>, set to <b>Read and write</b>. Nothing else.</li>
-        <li>Generate the token, copy it and paste it here.</li></ol>
-      <div class="inline"><input class="field" id="ghToken" type="password" placeholder="github_pat_…" aria-label="GitHub token" spellcheck="false" autocomplete="off"><button class="btn" id="ghSave">Save</button>
-        <button class="btn red" id="ghStart" ${lv.token && !lv.error ? '' : 'disabled'}>Start it now</button></div></div>` : '';
-  return status + (refused || runs ? refused + runs : '<div class="empty">No runs yet. The first one starts before the next session.</div>') + setup;
+  const runs = (lv.runs || []).map(r => `<div class="call"><div class="what"><b>${esc(r.session || 'Waiting for F1')}</b><small>${r.error ? '<span class="tag found">Problem</span>' : '<span class="tag fix">Saved</span>'}<span>${r.error ? esc(r.error) : `${r.flushes} update${r.flushes === 1 ? '' : 's'}`}</span><span>· ${ago(r.ts)}</span></small></div></div>`).join('');
+  const last = lv.last ? `Last live data: ${esc(lv.last.session_name)}, ${ago(lv.last.fetched_at)}` : 'No live data saved yet';
+  return `<div class="chan"><h3><span class="badge">On</span><span class="note">Runs by itself during every session and saves positions every 5 seconds. No computer needed.</span></h3>
+      <p class="help">${last}.${lv.until ? ` Started by hand until ${localTime(lv.until)}.` : ''}</p>
+      ${can ? `<div class="inline">${lv.until ? '<button class="btn" id="liveStop">Stop the hand start</button>' : '<button class="btn" id="liveStart">Start it now (2 hours)</button>'}</div>` : ''}</div>`
+    + (runs || '<div class="empty">No runs yet. It starts by itself 5 minutes before the next session.</div>');
 }
 function wireLive(){
-  $('ghSave').onclick = async () => {
-    const t = $('ghToken').value.trim(); if(!t) return toast('Paste the token first');
-    try{ await api({ action:'settings' }, { github_token: t }); toast('Token saved'); go('health'); }catch(e){ toast(e.message); }
-  };
-  $('ghStart').onclick = async e => {
-    if(!confirm('Start live timing now? It runs for up to 2 hours, or until the session is over.')) return;
-    e.target.disabled = true;
-    try{ const r = await api({ action:'bridge_start' }, {}); toast(r.ok ? 'Started. It shows up below in a few seconds.' : (r.error || 'It did not start')); setTimeout(() => go('health'), 4000); }
-    catch(err){ toast(err.message); e.target.disabled = false; }
+  const b = $('liveStart') || $('liveStop');
+  if(!b) return;
+  b.onclick = async () => {
+    const start = b.id === 'liveStart';
+    if(start && !confirm('Run live timing for the next 2 hours, even outside a session?')) return;
+    b.disabled = true;
+    try{ await api({ action: start ? 'live_start' : 'live_stop' }, {}); toast(start ? 'Started. The first update arrives within a minute.' : 'Stopped. It still runs by itself during sessions.'); go('health'); }
+    catch(e){ toast(e.message); b.disabled = false; }
   };
 }
 

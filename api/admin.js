@@ -190,25 +190,14 @@ function deliveryStatus(s) {
   };
 }
 
-/* Live timing in the cloud: whether GitHub accepts the token, and the latest runs there. */
-async function liveStatus(s) {
-  const out = { token: !!s.github_token, runs: [], error: null };
-  if (!s.github_token) return out;
-  try {
-    const r = await fetch('https://api.github.com/repos/IAMasoud/F1-Predictor/actions/workflows/live-timing.yml/runs?per_page=6', {
-      headers: { Authorization: `Bearer ${s.github_token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'f1-predictor-admin' },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) {
-      out.error = r.status === 401 ? 'GitHub did not accept the token (it may have expired)'
-        : `GitHub refused (${r.status}): the token needs Actions read and write on F1-Predictor`;
-      return out;
-    }
-    out.runs = ((await r.json())?.workflow_runs || []).map(x => ({
-      title: String(x.display_title || '').replace(/^Live timing · /, ''), status: x.status, conclusion: x.conclusion, created_at: x.created_at, url: x.html_url,
-    }));
-  } catch { out.error = 'GitHub did not answer'; }
-  return out;
+/* Live timing in the cloud (edge function `live`): its latest runs and the latest live data saved. */
+async function liveCloud(s) {
+  const [runs, last] = await Promise.all([
+    json('live_runs?select=ts,session,flushes,error&order=ts.desc&limit=8').catch(() => []),
+    json('sessions?source=eq.f1-signalr-live&select=circuit_id,session_name,fetched_at&order=fetched_at.desc&limit=1').catch(() => []),
+  ]);
+  const until = s.live_force_until && Date.parse(s.live_force_until) > Date.now() ? s.live_force_until : null;
+  return { runs: runs || [], last: last?.[0] || null, until };
 }
 
 /* The team's Telegram bot and the Assistant tab: commands run in the `bot` edge function. */
@@ -391,11 +380,7 @@ export default async function handler(req, res) {
           json('weekly_reports?select=id,created_at,week_start,week_end,summary,delivered&order=created_at.desc&limit=12'),
           readSettings(),
         ]);
-        const [live, starts] = await Promise.all([
-          liveStatus(settings),
-          json('bridge_runs?status=eq.failed&select=label,error,dispatched_at&order=dispatched_at.desc&limit=3').catch(() => []),
-        ]);
-        return res.json({ scans, log, reports, delivery: deliveryStatus(settings), live: { ...live, refused: starts || [] }, canManage: me.owner });
+        return res.json({ scans, log, reports, delivery: deliveryStatus(settings), live: await liveCloud(settings), canManage: me.owner });
       }
       return res.status(400).json({ error: 'Unknown view' });
     }
@@ -566,10 +551,16 @@ export default async function handler(req, res) {
         if (!text) return res.status(400).json({ error: 'Type a command' });
         return res.json(await bot('', { text, user_id: me.id }));
       }
-      // Live timing: start a run now (2 hours), e.g. when a session started without it.
-      if (action === 'bridge_start') {
+      // Live timing: run for the next 2 hours even outside a session (e.g. a delayed session), or stop that.
+      if (action === 'live_start' || action === 'live_stop') {
         if (!me.owner) return ownerOnly();
-        return res.json(await ops('bridge', { minutes: 120 }));
+        if (action === 'live_start') {
+          const until = new Date(Date.now() + 2 * 3600e3).toISOString();
+          await json('app_settings?on_conflict=key', { method: 'POST', body: [{ key: 'live_force_until', value: until, updated_at: new Date().toISOString() }], prefer: 'resolution=merge-duplicates,return=minimal' });
+          return res.json({ ok: true, until });
+        }
+        await json('app_settings?key=eq.live_force_until', { method: 'DELETE', prefer: 'return=minimal' });
+        return res.json({ ok: true, until: null });
       }
       if (action === 'notify_test') {
         if (!me.owner) return ownerOnly();

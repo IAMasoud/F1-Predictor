@@ -36,11 +36,13 @@ Then open `.env` and fill in:
 
 ## In the cloud (the usual way)
 
-The bridge also runs on GitHub Actions (`.github/workflows/live-timing.yml`), so no computer has to stay on.
-The `ops` Supabase function starts one run 5 to 10 minutes before every session (pg_cron job `live-timing`),
-and the run stops a few minutes after F1 marks the session over. It needs the repository secret `BRIDGE_KEY`
-(the CRON_SECRET value) and a fine-grained GitHub token with Actions read and write, saved in Pit Wall →
-Health and reports. Pit Wall also shows the latest runs and can start one by hand.
+Live timing runs in Supabase, so no computer has to stay on: the `live` edge function
+(`supabase/functions/live/`) does the same job as this script. The pg_cron job `live-cloud` calls it
+every minute from Friday to Sunday; during a session each run connects to F1's feed (Server-Sent
+Events), saves positions every 5 seconds for about 50 seconds, and ends, and the next minute's run
+carries on. Pit Wall → Health and reports shows its runs and can start it by hand for 2 hours.
+F1 blocks GitHub Actions machines, so the GitHub workflow (`.github/workflows/live-timing.yml`) is
+not used. This script is the backup: run it on your computer if the cloud runs ever fail.
 
 ## Run it on your computer (every race weekend)
 

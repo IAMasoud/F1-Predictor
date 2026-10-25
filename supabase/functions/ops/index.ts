@@ -238,18 +238,21 @@ async function scan() {
     return { ok: rows.length < 2, detail: `${rows.length} in 24 h: ${top.join('; ')}` };
   });
 
+  // Live timing runs in Supabase (edge function `live`) during every session: each session that
+  // ended in the last day should have positions saved from F1's live feed while it ran.
   await check('Live timing runs in the cloud', async () => {
-    const token = (await settings()).github_token;
-    if (!token) return { ok: false, detail: 'no GitHub token saved yet (Pit Wall, Health and reports)' };
-    const r = await github(token, `actions/workflows/${WORKFLOW}/runs?per_page=10`);
-    if (!r.ok) return { ok: false, detail: githubError(r.status, (await r.json().catch(() => ({})))?.message) };
-    // A run cancelled because a newer one took over is normal.
-    const recent = ((await r.json())?.workflow_runs || []).filter((x: Json) => now - Date.parse(x.created_at) < 3 * DAY);
-    const broken = recent.filter((x: Json) => x.status === 'completed' && !['success', 'cancelled'].includes(x.conclusion));
-    const refused = await db(`bridge_runs?status=eq.failed&dispatched_at=gte.${new Date(now - 3 * DAY).toISOString()}&select=label,error&limit=3`);
-    if (broken.length) return { ok: false, detail: `${broken.length} run${broken.length === 1 ? '' : 's'} failed: ${broken.map((x: Json) => x.display_title).join('; ').slice(0, 150)}` };
-    if (refused?.length) return { ok: false, detail: `could not start ${refused[0].label}: ${refused[0].error}` };
-    return { detail: recent.length ? `${recent.length} run${recent.length === 1 ? '' : 's'} in the last 3 days, all fine` : 'ready; it starts before each session' };
+    const ended = (races as Json[]).flatMap(r => SESSIONS.filter(([, , df, tf]) => r[df] && r[tf]).map(([, name, df, tf, len]) => ({
+      r, name: name === 'Sprint qualifying' ? 'Sprint Qualifying' : name, start: Date.parse(`${r[df]}T${r[tf]}:00Z`), len })))
+      .filter(x => x.start + x.len * 60e3 < now && x.start + x.len * 60e3 > now - DAY);
+    const errs = await db(`live_runs?error=not.is.null&ts=gte.${new Date(now - DAY).toISOString()}&select=error&order=ts.desc&limit=1`).catch(() => []);
+    if (!ended.length) return { detail: errs?.length ? `ready; last error: ${String(errs[0].error).slice(0, 100)}` : 'ready; it runs by itself during every session' };
+    const missing: string[] = [];
+    for (const x of ended) {
+      const row = (await db(`sessions?circuit_id=eq.${x.r.circuitId}&round=eq.${x.r.round}&year=eq.${season}&session_name=eq.${encodeURIComponent(x.name)}&source=eq.f1-signalr-live&select=fetched_at`))?.[0];
+      if (!row || Date.parse(row.fetched_at) < x.start) missing.push(x.name);
+    }
+    return missing.length ? { ok: false, detail: `no live data for ${missing.join(', ')}${errs?.length ? ` (last error: ${String(errs[0].error).slice(0, 80)})` : ''}` }
+      : { detail: `live data saved for ${ended.map(x => x.name).join(', ')}` };
   });
 
   const failed = checks.filter(c => !c.ok);
