@@ -38,7 +38,7 @@ function scrRaceEnd(r){ return r?.date && r?.raceUTC ? Date.parse(`${r.date}T${r
 function scrAt(d, t){ return d && t ? Date.parse(`${d}T${t}:00Z`) : null; }
 function scrLocal(ms, o = { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }){ return ms ? new Date(ms).toLocaleString(undefined, o) : '—'; }
 const scrTime = ms => scrLocal(ms, { hour: 'numeric', minute: '2-digit' });
-function scrAgo(ms){ const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
+function scrAgo(ms){ const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : (d => `${d} day${d === 1 ? '' : 's'} ago`)(Math.round(m / 1440)); }
 const scrWin = v => (v == null || v === '' || isNaN(+v)) ? '—' : (+v < 1 ? '<1%' : `${Math.round(+v)}%`);
 
 function scrRow(abbr, right = '', pos = null){
