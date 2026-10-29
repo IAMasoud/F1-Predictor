@@ -629,10 +629,11 @@ function scrAnalyticsRender(){
     <div><span class="lbl">Hardest race</span><b>${hardest.pct}%</b><p>${esc(scrShort(hardest.name))}, Round ${hardest.round}</p></div></div>`;
   /* score by race */
   const W = Math.max(300, Math.min(760, Math.round(el.clientWidth || 360))), H = 200, L = 26, B = 22, T = 10, n = season.length, bw = (W - L) / n;
-  const Y = v => H - B - v / 60 * (H - B - T);
+  const top = Math.max(60, Math.ceil(Math.max(...season.map(x => x.pct)) / 20) * 20);
+  const Y = v => H - B - v / top * (H - B - T);
   let s = `<svg class="an-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Score by race, average ${avg}%"><g font-family="Barlow, sans-serif" font-size="12" fill="var(--dim)">`;
-  [0, 20, 40, 60].forEach(v => { s += `<line x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--border)"/><text x="0" y="${Y(v) + 4}">${v}</text>`; });
-  season.forEach((x, i) => { const bx = L + i * bw + bw * .18, w = bw * .64, y = Y(Math.min(60, x.pct));
+  Array.from({ length: top / 20 + 1 }, (_, i) => i * 20).forEach(v => { s += `<line x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--border)"/><text x="0" y="${Y(v) + 4}">${v}</text>`; });
+  season.forEach((x, i) => { const bx = L + i * bw + bw * .18, w = bw * .64, y = Y(x.pct);
     s += `<rect x="${bx}" y="${y}" width="${w}" height="${H - B - y}" rx="2" fill="${i === n - 1 ? 'var(--lamp)' : x.baseline ? 'var(--sec)' : 'var(--muted)'}" ${x.baseline ? 'stroke="var(--border2)"' : ''}><title>R${x.round} ${esc(x.name)}: ${x.pct}%</title></rect>
       <text x="${bx + w / 2}" y="${H - 6}" text-anchor="middle">${x.round}</text>`; });
   s += `</g><line x1="${L}" x2="${W}" y1="${Y(avg)}" y2="${Y(avg)}" stroke="var(--text)" stroke-dasharray="5 5"/></svg>`;
