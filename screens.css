@@ -235,6 +235,8 @@ body.light .tyre.H{border-color:#8a8a8a}
   .topnav{display:flex;flex-wrap:wrap;gap:2px;margin-left:16px}
   .topnav button{min-height:34px;padding:0 10px;border:0;border-radius:8px;background:none;color:var(--muted);font:600 14px 'Barlow',sans-serif;cursor:pointer}
   .topnav button[aria-current="page"]{background:var(--sec);color:var(--text)}
+  .topnav-game{display:inline-flex;align-items:center;min-height:34px;padding:0 10px;border-radius:8px;color:var(--lamp);font:600 14px 'Barlow',sans-serif;text-decoration:none}
+  .topnav-game:hover{background:var(--sec)}
   .v2 .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .v2 .two>*{min-width:0}
   .v2 .two .scr-h{margin-top:0}
@@ -252,3 +254,14 @@ body.light .tyre.H{border-color:#8a8a8a}
   .race-select-wrap,#lightsOut,.v2-pane{max-width:760px;margin-left:auto!important;margin-right:auto!important}
 
 }
+
+/* Box Box: the team-principal game, featured at the top of More */
+.v2 .mo-game{display:flex;align-items:center;gap:14px;margin-bottom:14px;padding:16px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--text);text-decoration:none;transition:transform 140ms var(--ease-out),border-color 160ms ease}
+.v2 .mo-game:active{transform:scale(.98)}
+.v2 .mo-game:hover{border-color:var(--border2)}
+.mo-game-lamps{display:flex;gap:5px;padding:7px 8px;border-radius:9px;background:var(--lamp-off);flex-shrink:0}
+.mo-game-lamps i{width:16px;height:16px;border-radius:50%;background:var(--lamp)}
+.mo-game-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.mo-game-t small{font:600 11px 'Barlow',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--lamp)}
+.mo-game-t b{font:italic 800 24px/1.05 'Barlow Condensed',sans-serif;text-transform:uppercase}
+.mo-game-t span{font-size:14px;color:var(--muted);margin-top:2px}

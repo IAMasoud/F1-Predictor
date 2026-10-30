@@ -804,7 +804,12 @@ function scrMoreRender(){
   const t = scrTheme();
   const D = [['hist', 'season', 'Season', 'The title fight, wins and every standing'], ['cal', 'cal', 'Calendar', 'All the rounds in your time'],
     ['anlt', 'chart', 'Analytics', 'How good the AI is, and head to head'], ['arch', 'arch', 'Predictions archive', 'Every call the AI made, by stage'], ['pits', 'pits', 'Pit stops', 'Stops and tyres from the latest race']];
-  el.innerHTML = `<div class="card" style="padding:2px 14px">${D.map(([k, i, tl, sub]) => `<button type="button" class="mo-li" onclick="mobileNav('${k}')">${scrIco(i)}<span><b>${tl}</b><small>${sub}</small></span><span class="chev">${scrIco('chev', 18)}</span></button>`).join('')}</div>
+  // Box Box, the team-principal game, lives at /boxbox/ (built from ~/GRID by scripts/publish.mjs).
+  const game = `<a class="mo-game" href="/boxbox/" onclick="try{trackEvent('screen',{screen:'boxbox'})}catch(e){}">
+      <span class="mo-game-lamps" aria-hidden="true"><i></i><i></i></span>
+      <span class="mo-game-t"><small>Play</small><b>Box Box</b><span>Run your own F1 team. You never drive: you make the calls.</span></span>
+      <span class="chev">${scrIco('chev', 18)}</span></a>`;
+  el.innerHTML = game + `<div class="card" style="padding:2px 14px">${D.map(([k, i, tl, sub]) => `<button type="button" class="mo-li" onclick="mobileNav('${k}')">${scrIco(i)}<span><b>${tl}</b><small>${sub}</small></span><span class="chev">${scrIco('chev', 18)}</span></button>`).join('')}</div>
     <h2 class="scr-h">Settings</h2>
     <div class="card" style="margin-top:10px;padding:2px 14px">
       <div class="mo-set"><b>Notifications</b><button type="button" class="link" onclick="openNotifSettings()">Choose which</button></div>
@@ -886,7 +891,7 @@ const SCR_FACTS = {
   if(anlt && !$('pMore')) anlt.insertAdjacentHTML('afterend', '<div class="pane v2-pane" id="pMore"><div class="v2" id="vMore"></div></div>');
   const head = document.querySelector('.header');
   if(head && !head.querySelector('.topnav')){
-    head.querySelector('.lo-brand')?.insertAdjacentHTML('afterend', `<nav class="topnav" aria-label="Screens">${SCR_TOP.map(([k, l]) => `<button type="button" data-t="${k}" onclick="mobileNav('${k}')">${l}</button>`).join('')}</nav>`);
+    head.querySelector('.lo-brand')?.insertAdjacentHTML('afterend', `<nav class="topnav" aria-label="Screens">${SCR_TOP.map(([k, l]) => `<button type="button" data-t="${k}" onclick="mobileNav('${k}')">${l}</button>`).join('')}<a class="topnav-game" href="/boxbox/">Box Box</a></nav>`);
   }
   const moreBtn = document.querySelector('#mobileBottomNav [data-nav="more"]');
   if(moreBtn) moreBtn.setAttribute('onclick', "mobileNav('more')");

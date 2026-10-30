@@ -4,7 +4,7 @@
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
  * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v81';
+const CACHE = 'f1-predictor-v82';
 const STATIC = [
   '/',
   '/index.html',
@@ -29,7 +29,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k.startsWith('f1-predictor-') && k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -43,7 +43,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (!(sameOrigin || isFont) || (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/join')))) return;
+  if (!(sameOrigin || isFont) || (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/join') || url.pathname.startsWith('/boxbox')))) return;
 
   // Page loads: the latest app from the network (so a deploy shows on the first open),
   // the cached copy when offline or the network takes longer than 4 seconds.
