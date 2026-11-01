@@ -334,6 +334,10 @@ async function mergeSupabaseRaceResults(){
       if(seen.has(key)) continue;
       const g = (row.grid_data || []).filter(x => x.abbr && x.pos);
       if(g.length < 10) continue;                 // ignore partial grids
+      // A row saved before the session's scheduled start can't be its result (stale feed data).
+      const sr = SEASON_RACES[row.circuit_id] || {};
+      const startMs = Date.parse(isSprint ? `${sr.sprintDate}T${sr.sprintUTC}:00Z` : `${sr.date}T${sr.raceUTC}:00Z`);
+      if(startMs && Date.parse(row.fetched_at) < startMs) continue;
       seen.add(key);
 
       const meta = BASE_UPCOMING.find(u => u.circuitId === row.circuit_id);
@@ -398,7 +402,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.82';
+const APP_VERSION = 'BETA 1.83';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
