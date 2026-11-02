@@ -97,6 +97,7 @@ export class Feed {
     } else if (feed === 'TrackStatus') {
       this.track = { status: String(data.Status || this.track?.status || ''), message: String(data.Message || this.track?.message || '') };
     } else if (feed === 'SessionInfo') {
+      if (!data.Name && !data.Type) return;   // no session named: never guess Race from leftover timing
       const loc = data.Meeting?.Location || data.Meeting?.Country?.Name || '';
       const circuitId = LOC_TO_CIRCUIT[loc] || loc.toLowerCase().replace(/[\s'’`]+/g, '_');
       const both = `${data.Name || ''} ${data.Type || ''}`.toLowerCase();

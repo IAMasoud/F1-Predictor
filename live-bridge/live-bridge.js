@@ -207,6 +207,7 @@ function mergeFeed(feedName, data) {
   } else if (feedName === 'TrackStatus') {
     state.trackStatus = { status: String(data.Status || state.trackStatus?.status || ''), message: String(data.Message || state.trackStatus?.message || '') };
   } else if (feedName === 'SessionInfo') {
+    if (!data.Name && !data.Type) return;   // no session named: never guess Race from leftover timing
     const loc = data.Meeting?.Location || data.Meeting?.Country?.Name || '';
     const circuitId = LOC_TO_CIRCUIT[loc] || loc.toLowerCase().replace(/[\s'’`]+/g, '_');
     // Use the calendar round, NOT F1's internal Meeting.Key (which is a different ID)

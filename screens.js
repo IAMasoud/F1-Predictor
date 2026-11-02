@@ -420,7 +420,7 @@ function scrLiveRender(race, live, row){
         : ai ? `${ai.lap ? `Lap ${ai.lap}${ai.totalLaps ? ` of ${ai.totalLaps}` : ''} · ` : ''}${ai.winChance ? 'chance to win' : 'predicted winner'}${ai.at ? ` · ${scrAgo(ai.at)}` : ''}`
         : preTop ? `Before the start it said ${esc(String(preTop.abbr || '').toUpperCase())}, ${scrWin(preTop.winProb)}` : 'No call before the start';
       const ask = isLive ? `<button type="button" class="btn2 ${ai ? '' : 'red'}" onclick="scrLiveAsk(this)" ${SCR.liveAsking ? 'disabled' : ''}>${SCR.liveAsking ? 'Thinking…' : ai ? 'Ask again' : 'Ask the AI now'}</button>` : '';
-      h += `<div class="lv-ai"><div style="min-width:0"><div class="lbl">The AI right now</div><div class="scr-sub" style="margin-top:3px">${sub}</div></div>
+      h += `<div class="lv-ai"><div style="min-width:0"><div class="lbl">${isLive ? 'The AI right now' : 'The AI’s last call'}</div><div class="scr-sub" style="margin-top:3px">${sub}</div></div>
         <div class="lv-ai-r">${ai ? `<b>${esc(ai.top)}${ai.winChance ? ` ${ai.winChance}%` : ''}</b>` : ''}${ask}</div></div>`;
     } else if(!isLive && preTop && racey){
       h += `<div class="lv-ai"><div><div class="lbl">Before the start the AI said</div><div class="scr-sub" style="margin-top:3px">See how it did in Reality</div></div><b>${esc(String(preTop.abbr || '').toUpperCase())} ${scrWin(preTop.winProb)}</b></div>`;
@@ -520,11 +520,11 @@ function scrSeasonRender(){
   const wins = {};
   gps.forEach(r => { const a = scrAbbr(r.results[0]); wins[a] = (wins[a] || 0) + 1; });
   const total = races.length || 23;
-  let h = `<div class="ss-lead"><div class="lbl">${leftGP ? `Leads the championship after ${gps.length} of ${total} rounds` : 'World champion'}</div>
+  let h = `<div class="ss-lead"><div class="lbl">${leftGP && fight.length ? `Leads the championship after ${gps.length} of ${total} rounds` : 'World champion'}</div>
     <div class="row"><div class="big" style="text-transform:uppercase;min-width:0">${esc(scrSurname(leader.abbr))}</div><div class="big">${leader.pts}</div></div>
     <div class="pv-call" style="margin-top:0"><div class="team" style="display:flex;align-items:center;gap:8px;margin-top:9px;font:500 15px 'Barlow';color:var(--muted)"><i class="slash" style="background:${scrCol(leader.abbr)}"></i>${esc(scrTeam(leader.abbr))} · ${wins[leader.abbr] || 0} win${wins[leader.abbr] === 1 ? '' : 's'}${second ? ` · ${leader.pts - second.pts} points clear` : ''}</div></div></div>`;
   if(leftGP){
-    h += `<h2 class="scr-h">Still in the fight</h2><p class="scr-sub">${leftGP} race${leftGP === 1 ? '' : 's'}${leftSprint ? ` and ${leftSprint} sprint${leftSprint === 1 ? '' : 's'}` : ''} left, ${left} points to play for.${fight.length ? ` ${fight.length === 1 ? 'One driver' : fight.length + ' drivers'} can still catch ${esc(scrSurname(leader.abbr))}.` : ''}</p>`;
+    h += `<h2 class="scr-h">${fight.length ? 'Still in the fight' : 'Title decided'}</h2><p class="scr-sub">${leftGP} race${leftGP === 1 ? '' : 's'}${leftSprint ? ` and ${leftSprint} sprint${leftSprint === 1 ? '' : 's'}` : ''} left, ${left} points to play for.${fight.length ? ` ${fight.length === 1 ? 'One driver' : fight.length + ' drivers'} can still catch ${esc(scrSurname(leader.abbr))}.` : ''}</p>`;
     h += fight.length ? `<div class="card" style="margin-top:10px;padding:2px 14px">${fight.map(d => { const gap = leader.pts - d.pts;
         return `<div class="ss-fight"><div class="top"><i class="slash" style="background:${scrCol(d.abbr)}"></i><span class="code">${esc(d.abbr)}</span><span class="nm">${esc(scrSurname(d.abbr))} · ${d.pts} pts</span><span class="need">${gap} behind</span></div><div class="ss-track"><i style="width:${Math.min(100, gap / Math.max(1, left) * 100)}%"></i></div><div class="ss-cap">Needs ${Math.min(100, Math.round(gap / Math.max(1, left) * 100))}% of the points left</div></div>`; }).join('')}</div>`
       : `<div class="empty" style="margin-top:10px"><b>${esc(scrSurname(leader.abbr))} has won the title.</b><p>Nobody can catch the points lead any more.</p></div>`;
