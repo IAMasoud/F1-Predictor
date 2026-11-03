@@ -771,7 +771,7 @@ async function scrPitsRender(){
       <div><span class="lbl">${lane ? 'Quickest through the pit lane' : 'Fastest stop'}</span><b>${fastest ? fastest.x.s.toFixed(1) + 's' : '—'}</b><p>${fastest ? esc(ab[fastest.driver_number] || '') + `, lap ${fastest.lap_number}` : 'No timed stops'}</p></div>
       ${common ? `<div style="grid-column:1/3"><span class="lbl">Most common</span><b>${common[0] === '0' ? 'No stop' : `${common[0]} stop${common[0] === '1' ? '' : 's'}`}</b><p>${common[1]} of ${nums.length} cars</p></div>` : ''}</div>`;
     h += `<h2 class="scr-h">Strategy by car</h2><p class="scr-sub">Finishing order · each bar is one set of tyres, as long as it ran${lane ? ' · times are the whole trip through the pit lane' : ''}</p><div class="card" style="margin-top:10px;padding:2px 14px">`;
-    h += nums.slice(0, 20).map(n => {
+    h += nums.map(n => {
       const a = ab[n] || `#${n}`, ss = byDrv[n].slice().sort((x, y) => x.stint_number - y.stint_number);
       const strip = ss.map(s => { const len = Math.max(1, (s.lap_end || total) - (s.lap_start || 1) + 1), c = C[String(s.compound || '').toUpperCase()] || ['?', 'var(--dim)'];
         return `<span title="${esc(s.compound || '')} · ${len} laps" style="flex:${len};height:14px;border-radius:3px;box-shadow:inset 0 0 0 2px ${c[1]};display:flex;align-items:center;justify-content:center;font:800 10px 'Barlow Condensed',sans-serif">${len >= 6 ? c[0] : ''}</span>`; }).join('');
