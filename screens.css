@@ -33,6 +33,7 @@ body[data-screen="pred"] .pane{display:none!important}
 .v2 .btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--border2);background:none;color:var(--text);font:700 16px 'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;cursor:pointer}
 .v2 .btn2.red{background:#e01e1e;border-color:#e01e1e;color:#fff} /* deeper than the lamp red so white text reaches 4.5:1 */
 .v2 .btn2.block{display:flex;width:100%}
+.v2 .btn2[hidden]{display:none}
 .v2 .btn2:disabled{opacity:.5;cursor:default}
 .v2 .link{background:none;border:0;padding:0;color:var(--text);font:600 14px 'Barlow',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .v2 .seg{display:inline-flex;flex-wrap:wrap;padding:3px;border-radius:9px;background:var(--card)}
