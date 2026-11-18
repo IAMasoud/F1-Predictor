@@ -762,6 +762,7 @@ async function scrPitsRender(){
     const nums = Object.keys(byDrv).map(Number).sort((a, b) => posOf(a) - posOf(b));
     const allStops = Object.values(stops).flat().sort((a, b) => a.x.s - b.x.s);
     const lane = allStops.length && allStops.every(p => p.x.lane);
+    const someLane = !lane && allStops.some(p => p.x.lane);
     const fastest = allStops[0];
     const strat = {}; nums.forEach(n => { const k = Math.max(0, byDrv[n].length - 1); strat[k] = (strat[k] || 0) + 1; });
     const common = Object.entries(strat).sort((a, b) => b[1] - a[1])[0];
@@ -770,12 +771,12 @@ async function scrPitsRender(){
       <div><span class="lbl">Stops</span><b>${allStops.length}</b><p>Across ${nums.length} cars</p></div>
       <div><span class="lbl">${lane ? 'Quickest through the pit lane' : 'Fastest stop'}</span><b>${fastest ? fastest.x.s.toFixed(1) + 's' : '—'}</b><p>${fastest ? esc(ab[fastest.driver_number] || '') + `, lap ${fastest.lap_number}` : 'No timed stops'}</p></div>
       ${common ? `<div style="grid-column:1/3"><span class="lbl">Most common</span><b>${common[0] === '0' ? 'No stop' : `${common[0]} stop${common[0] === '1' ? '' : 's'}`}</b><p>${common[1]} of ${nums.length} cars</p></div>` : ''}</div>`;
-    h += `<h2 class="scr-h">Strategy by car</h2><p class="scr-sub">Finishing order · each bar is one set of tyres, as long as it ran${lane ? ' · times are the whole trip through the pit lane' : ''}</p><div class="card" style="margin-top:10px;padding:2px 14px">`;
+    h += `<h2 class="scr-h">Strategy by car</h2><p class="scr-sub">Finishing order · each bar is one set of tyres, as long as it ran${lane ? ' · times are the whole trip through the pit lane' : someLane ? ' · * no stop time recorded, this is the whole trip through the pit lane' : ''}</p><div class="card" style="margin-top:10px;padding:2px 14px">`;
     h += nums.map(n => {
       const a = ab[n] || `#${n}`, ss = byDrv[n].slice().sort((x, y) => x.stint_number - y.stint_number);
       const strip = ss.map(s => { const len = Math.max(1, (s.lap_end || total) - (s.lap_start || 1) + 1), c = C[String(s.compound || '').toUpperCase()] || ['?', 'var(--dim)'];
         return `<span title="${esc(s.compound || '')} · ${len} laps" style="flex:${len};height:14px;border-radius:3px;box-shadow:inset 0 0 0 2px ${c[1]};display:flex;align-items:center;justify-content:center;font:800 10px 'Barlow Condensed',sans-serif">${len >= 6 ? c[0] : ''}</span>`; }).join('');
-      const times = (stops[n] || []).sort((x, y) => x.lap_number - y.lap_number).map(p => p.x.s.toFixed(1)).join(' · ');
+      const times = (stops[n] || []).sort((x, y) => x.lap_number - y.lap_number).map(p => p.x.s.toFixed(1) + (someLane && p.x.lane ? '*' : '')).join(' · ');
       return `<div style="padding:10px 0;border-top:1px solid var(--border)"><div class="trow" style="border:0;min-height:30px"><div class="pbox">${posOf(n) < 99 ? posOf(n) : '–'}</div><i class="slash" style="background:${scrCol(a)}"></i><span class="code">${esc(a)}</span><span class="nm">${esc(scrSurname(a))}</span><span class="num" style="font-size:13px;color:var(--muted)">${times ? times + ' s' : 'no stop'}</span></div>
         <div style="display:flex;gap:3px;margin-top:6px">${strip}</div></div>`;
     }).join('');
