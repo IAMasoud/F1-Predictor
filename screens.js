@@ -34,7 +34,7 @@ const scrTeam = a => teamName(scrDrv(a)?.team || '') || '';
 const scrGPs = () => (completedRaces || []).filter(r => !String(r.round).endsWith('S') && r.results?.length);
 const scrShort = n => String(n || '').replace(/ Grand Prix.*$/i, '').replace(/\s*\(.*\)$/, '');
 function scrRaces(){ return Object.values(SEASON_RACES || {}).sort((a, b) => a.round - b.round); }
-function scrRaceEnd(r){ return r?.date && r?.raceUTC ? Date.parse(`${r.date}T${r.raceUTC}:00Z`) + 2 * 3600e3 : r?.date ? Date.parse(`${r.date}T23:59:00Z`) : 0; }
+function scrRaceEnd(r){ const t = r?.raceUTC || (typeof RACE_TIMES !== 'undefined' ? RACE_TIMES[r?.circuitId]?.raceUTC : null); return r?.date && t ? Date.parse(`${r.date}T${t}:00Z`) + 2 * 3600e3 : r?.date ? Date.parse(`${r.date}T23:59:00Z`) : 0; }
 function scrAt(d, t){ return d && t ? Date.parse(`${d}T${t}:00Z`) : null; }
 function scrLocal(ms, o = { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }){ return ms ? new Date(ms).toLocaleString(undefined, o) : '—'; }
 const scrTime = ms => scrLocal(ms, { hour: 'numeric', minute: '2-digit' });
