@@ -402,7 +402,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.88';
+const APP_VERSION = 'BETA 1.89';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -1640,8 +1640,11 @@ async function runMidRacePrediction(){
     return d ? `${o.abbr} ${d.name} (${teamName(d.team)}) ${d.pts}pts season` : `${o.abbr}`;
   }).join('\n');
 
+  // saved predictions hold objects ({abbr, driverId, ...}) in top10, so print the code, not "[object Object]"
+  const priorCode = a => driverAbbr(a);
+  const priorWhy = lastPrediction?.reasoning || lastPrediction?.keyFactor || '';
   const priorPredBlock = lastPrediction?.top10?.length
-    ? `\n═══ PRE-RACE AI PREDICTION (generated before lights out) ═══\n${lastPrediction.top10.map((a,i)=>`P${i+1}: ${a}`).join('\n')}${lastPrediction.reasoning ? `\nOriginal reasoning: ${lastPrediction.reasoning}` : ''}\n\nIn your response, explicitly note which positions have changed vs this pre-race prediction and the key reasons why.\n`
+    ? `\n═══ PRE-RACE AI PREDICTION (generated before lights out) ═══\n${lastPrediction.top10.map((a,i)=>`P${i+1}: ${priorCode(a)}`).join('\n')}${priorWhy ? `\nOriginal reasoning: ${priorWhy}` : ''}\n\nIn your response, explicitly note which positions have changed vs this pre-race prediction and the key reasons why.\n`
     : '';
 
   const prompt = `You are an expert F1 race strategist. The ${race.name} is LIVE right now.
