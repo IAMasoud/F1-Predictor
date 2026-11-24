@@ -1,0 +1,61 @@
+name: ML model
+
+# The ML model on real race weekends (ml/run.py): a call after FP1, after qualifying and every lap of
+# the race, saved privately for Pit Wall; Monday scores the race. Every run checks the calendar and
+# exits within a minute when nothing is due. The site's AI is not touched.
+on:
+  schedule:
+    - cron: '7,37 * * * 5,6,0'   # every 30 min, Friday to Sunday (UTC)
+    - cron: '15 6,18 * * 1'      # Monday: score the weekend
+  workflow_dispatch:
+    inputs:
+      dry_round:
+        description: 'Test only: rebuild this past round of the season and print the calls (saves nothing)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ml-model
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SB_URL: https://zeqxzyisqwemqsvspbyj.supabase.co
+      ML_KEY: ${{ secrets.ML_KEY }}
+      ML_DATA: ${{ github.workspace }}/ml-data
+      DRY_ROUND: ${{ inputs.dry_round }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ml/requirements.txt
+      - run: pip install -r ml/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: ml-data
+          key: ml-data-${{ github.run_id }}
+          restore-keys: ml-data-
+      - name: Run the model
+        run: |
+          rm -f ml-data/.updated
+          if [ -n "$DRY_ROUND" ]; then
+            case "$DRY_ROUND" in (*[!0-9]*) echo "round must be a number"; exit 1;; esac
+            node ml/collect.mjs && touch ml-data/.updated
+            python ml/run.py --dry --round "$DRY_ROUND"
+          else
+            python ml/run.py
+          fi
+      - name: Keep the downloaded data for next time
+        if: always() && hashFiles('ml-data/.updated') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ml-data
+          key: ml-data-${{ github.run_id }}

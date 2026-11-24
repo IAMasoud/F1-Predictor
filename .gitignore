@@ -23,3 +23,5 @@ npm-debug.log*
 
 # Supabase CLI scratch files (machine-generated, not source)
 supabase/.temp/
+ml/data
+ml/__pycache__

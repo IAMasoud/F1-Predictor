@@ -375,13 +375,14 @@ const ICON = {
   overview:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
   predictions:'<path d="M5 3v18M5 4h11l-2 4 2 4H5"/>',
   ai:'<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
+  ml:'<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M8 6.8l8 4.4M8 17.2l8-4.4M6 8v8"/>',
   subscribers:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',
   health:'<path d="M12 21s-7-4.4-9-9.2C1.6 8.3 3.6 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.4 3.3 4 6.8C19 16.6 12 21 12 21z"/>',
   team:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c3 .3 5.5 2.6 5.5 5.8"/>',
   assistant:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   members:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.4"/><path d="M5.5 16.5c.6-1.8 2-2.8 3.5-2.8s2.9 1 3.5 2.8M15 9h3M15 13h3"/>',
 };
-const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['subscribers','Subscribers and email'],['health','Health and reports'],['assistant','Assistant'],['team','Admins'],['members','Members']];
+const PAGES = [['overview','Overview'],['weekend','This weekend'],['predictions','Predictions'],['ai','AI and jobs'],['ml','ML model'],['subscribers','Subscribers and email'],['health','Health and reports'],['assistant','Assistant'],['team','Admins'],['members','Members']];
 const pagesFor = () => PAGES.filter(([k]) => k !== 'members' || ME?.owner);
 function bars(list, max, fmtV = fmt){ max = max || Math.max(1, ...list.map(x => x.value)); return list.map(x => `<div class="tr"><span class="k" title="${esc(x.key)}">${esc(x.label || x.key)}</span><span class="b"><i style="width:${Math.max(2, x.value / max * 100)}%"></i></span><span class="v">${fmtV(x.value)}</span></div>`).join('') || '<div class="empty">Nothing yet</div>'; }
 function lineChart(points, { h = 260 } = {}){
@@ -617,6 +618,53 @@ const RENDER = {
         </section>
       </div>`;
     wireActions(main, () => go('ai'));
+  },
+
+  async ml(main){
+    const d = await api({ view:'ml' });
+    const rows = d.rows || [], ai = d.ai || [], live = d.live || [];
+    const acc = (p, a) => { const n = Math.min(p.length, a.length, 10); if(!n) return null; let e = 0, c = 0;
+      for(let i = 0; i < n; i++){ if(p[i] === a[i]) e++; else { const j = a.indexOf(p[i]); if(j >= 0 && Math.abs(j - i) <= 2) c++; } }
+      return Math.round((e + c * .5) / n * 100); };
+    const races = [...new Map(rows.map(r => [r.season + '-' + r.round, { season: r.season, round: r.round, circuit_id: r.circuit_id }])).values()];
+    const pct = v => v == null ? '—' : Math.round(v) + '%';
+    const pick = r => r ? `${esc(r.top10?.[0] || '—')} <span class="note">${r.win?.[r.top10?.[0]] != null ? Math.round(r.win[r.top10[0]]) + '%' : ''}</span>` : '—';
+    const aiFor = (rc, stage) => { const list = ai.filter(p => p.round === rc.round && p.circuit_id === rc.circuit_id && (stage === 'beforeQuali' ? ['beforeQuali', 'afterSprint'].includes(p.stage) : p.stage === stage));
+      return list.find(p => !p.fallback) || list[0] || null; };
+    // head to head on the calls both made
+    let pre = { n: 0, ml: 0, ai: 0, mlW: 0, aiW: 0 }, lv = { n: 0, ml: 0, ai: 0 };
+    races.forEach(rc => {
+      ['beforeQuali', 'afterQuali'].forEach(st => { const m = rows.find(r => r.round === rc.round && r.season === rc.season && r.stage === st), a = aiFor(rc, st);
+        if(m?.accuracy != null && a?.accuracy != null){ pre.n++; pre.ml += +m.accuracy; pre.ai += +a.accuracy; pre.mlW += m.winner_hit ? 1 : 0; pre.aiW += m.actual?.[0] && a.winner === m.actual[0] ? 1 : 0; } });
+      const ml = rows.filter(r => r.round === rc.round && r.season === rc.season && r.stage === 'live' && r.actual);
+      live.filter(c => c.round === rc.round && c.season === rc.season).forEach(c => { const m = [...ml].reverse().find(r => r.lap <= c.lap);
+        if(m && Array.isArray(c.top10)){ lv.n++; lv.ml += acc(m.top10, m.actual); lv.ai += acc(c.top10.map(x => String(x).toUpperCase()), m.actual); } });
+    });
+    const last = rows.reduce((t, r) => r.created_at > t ? r.created_at : t, '');
+    main.innerHTML = `
+      <div class="top"><h1>ML model</h1><span class="note">Private test run by GitHub Actions. The site's AI is unchanged and visitors don't see this.</span></div>
+      <div class="kpis">
+        <div><span>Races followed</span><b>${races.length}</b><small>${last ? 'Last call ' + ago(last) : 'First call after the next FP1'}</small></div>
+        <div><span>Before the race: ML</span><b>${pre.n ? pct(pre.ml / pre.n) : '—'}</b><small>Site accuracy, ${pre.n} scored calls</small></div>
+        <div><span>Before the race: AI</span><b>${pre.n ? pct(pre.ai / pre.n) : '—'}</b><small>Same races and stages</small></div>
+        <div><span>Winner called</span><b>${pre.n ? `${pre.mlW} vs ${pre.aiW}` : '—'}</b><small>ML vs AI, before the race</small></div>
+        <div><span>Live: ML vs AI</span><b>${lv.n ? `${pct(lv.ml / lv.n)} · ${pct(lv.ai / lv.n)}` : '—'}</b><small>${lv.n} Live-screen AI calls, ML at the same lap</small></div>
+      </div>
+      ${races.length ? races.map(rc => {
+        const R = rows.filter(r => r.round === rc.round && r.season === rc.season);
+        const st = s => R.find(r => r.stage === s);
+        const lives = R.filter(r => r.stage === 'live');
+        const actual = R.find(r => r.actual)?.actual;
+        const marks = lives.filter((r, i) => r.lap % 5 === 0 || i === lives.length - 1);
+        const info = (st('afterQuali') || st('beforeQuali'))?.info || {};
+        return `<section class="panel" style="margin-top:14px"><h2>R${rc.round} · ${esc(rc.circuit_id)} <span>${actual ? 'Result ' + esc(actual.slice(0, 3).join(' ')) : 'Not scored yet'}${info.rain != null ? ' · rain forecast ' + Math.round(info.rain * 100) + '% (' + esc(info.rain_source || '') + ')' : ''}</span></h2>
+          <table><thead><tr><th>Call</th><th>ML winner</th><th class="n">ML score</th><th>AI winner</th><th class="n">AI score</th><th>ML top 10</th></tr></thead><tbody>
+          ${['beforeQuali', 'afterQuali'].map(s => { const m = st(s), a = aiFor(rc, s);
+            return `<tr><td>${STAGE[s]}</td><td>${pick(m)}</td><td class="n">${pct(m?.accuracy)}</td><td>${a ? `${esc(a.winner || '—')} <span class="note">${a.winProb != null ? a.winProb + '%' : ''}</span>` : '—'}</td><td class="n">${pct(a?.accuracy)}</td><td class="note">${m ? esc(m.top10.join(' ')) : 'not made'}</td></tr>`; }).join('')}
+          ${marks.map(r => { const c = [...live].reverse().find(x => x.round === rc.round && x.season === rc.season && x.lap <= r.lap && x.lap > r.lap - 5);
+            return `<tr><td>Lap ${r.lap}${r.info?.laps ? ' / ' + r.info.laps : ''}</td><td>${pick(r)}</td><td class="n">${pct(r.accuracy)}</td><td>${c ? `${esc(String(c.top10?.[0] || '—').toUpperCase())} <span class="note">${c.win_chance != null ? c.win_chance + '%' : ''} · L${c.lap}</span>` : '<span class="note">no Live call</span>'}</td><td class="n">${c && actual ? pct(acc(c.top10.map(x => String(x).toUpperCase()), actual)) : '—'}</td><td class="note">${esc(r.top10.join(' '))}</td></tr>`; }).join('')}
+          </tbody></table></section>`; }).join('')
+      : `<section class="panel" style="margin-top:14px"><div class="empty">No calls yet. The model makes its first call after FP1 of the next race weekend, then one after qualifying and one every lap of the race. Each is scored here once the race is over.</div></section>`}`;
   },
 
   async subscribers(main){

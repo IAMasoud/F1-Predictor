@@ -1,0 +1,39 @@
+{
+ "tune": {
+  "pre": {
+   "lam": 0.5,
+   "T": 0.85
+  },
+  "quali": {
+   "lam": 0.5,
+   "T": 1.4
+  },
+  "live": {
+   "lam": 0.5,
+   "T": 1.0
+  }
+ },
+ "extra": [
+  "drv_form3_rk",
+  "drv_form5_rk",
+  "drv_quali5_rk",
+  "team_form5_rk",
+  "team_quali5_rk",
+  "champ_pos_rk",
+  "fp1_pos_rk",
+  "circ_hist_rk",
+  "wet_skill_rk"
+ ],
+ "ranked": [
+  "drv_form3",
+  "drv_form5",
+  "drv_quali5",
+  "team_form5",
+  "team_quali5",
+  "champ_pos",
+  "fp1_pos",
+  "circ_hist",
+  "wet_skill"
+ ],
+ "note": "shrink/sharpness chosen on 2025 races only (train.py)"
+}

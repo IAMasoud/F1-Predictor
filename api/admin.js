@@ -326,6 +326,17 @@ export default async function handler(req, res) {
         const [calls, preds, jobs] = await Promise.all([rpc('admin_ai', { days }), predictionsList(), rpc('admin_job_status')]);
         return res.json({ calls, ai: aiSeason(preds), jobs });
       }
+      if (view === 'ml') {
+        // the ML model's private calls (GitHub Actions, ml/run.py) next to the AI's calls for the same races
+        const [rows, preds, live] = await Promise.all([
+          json('ml_predictions?select=season,round,circuit_id,stage,lap,top10,win,info,accuracy,winner_hit,actual,created_at&order=season.desc,round.desc,lap.asc&limit=3000').catch(() => []),
+          predictionsList(),
+          json('live_calls?select=season,round,circuit_id,lap,total_laps,top10,win_chance,created_at&order=created_at.asc&limit=2000').catch(() => []),
+        ]);
+        const ai = preds.filter(p => p.pred_type === 'race' && !p.hidden)
+          .map(p => ({ round: +p.round, circuit_id: p.circuit_id, stage: p.stage, winner: p.winner, winProb: p.winProb, accuracy: p.accuracy, fallback: p.fallback, created_at: p.created_at }));
+        return res.json({ rows, ai, live });
+      }
       if (view === 'predictions') return res.json({ predictions: await predictionsList() });
       if (view === 'weekend') return res.json(await weekend(await predictionsList()));
       if (view === 'subscribers') {
