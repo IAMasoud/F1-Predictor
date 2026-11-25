@@ -14,7 +14,7 @@ export const config = { maxDuration: 60 };
 
 const OWNER_EMAIL = (process.env.ADMIN_EMAIL || 'ahmoudy365@gmail.com').toLowerCase();
 const OWNER_DEFAULTS = { name: 'Ahmed Masoud', title: 'Founder & CEO' };
-const SITE = 'https://f1-predictor-theta.vercel.app';
+const SITE = 'https://pitwall.company';
 const INVITE_DAYS = 14;
 const STAGE_ORDER = ['afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];
 const tokens = new Map(); // token → { me, until }

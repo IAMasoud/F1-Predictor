@@ -19,7 +19,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const {
-  SITE_URL = 'https://f1-predictor-theta.vercel.app',
+  SITE_URL = 'https://pitwall.company',
   BRIDGE_KEY,
   FLUSH_INTERVAL_MS = 5000,
   LOCAL_HTTP_PORT = 3001,

@@ -18,7 +18,7 @@ import { loadSeason, sessionEndMs, FALLBACK_SEASON } from '../season.js';
 
 export const config = { maxDuration: 60 };
 
-const APP = 'https://f1-predictor-theta.vercel.app';
+const APP = 'https://pitwall.company';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // 'final' snapshots are made after the race, so they never count as the AI's call.
 const PRE_RACE_STAGES = ['afterQuali', 'afterSprint', 'afterSprintQ', 'beforeQuali', 'beforeSprintQ'];

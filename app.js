@@ -402,7 +402,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.89';
+const APP_VERSION = 'BETA 1.90';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -5186,7 +5186,7 @@ async function sharePrediction(){
   ctx.fillStyle='#2a2a3a'; ctx.fillRect(0,H-PAD-8,W,1);
   ctx.fillStyle='#555';
   ctx.font='10px "Barlow",sans-serif';
-  ctx.fillText('f1-predictor-theta.vercel.app',PAD,fy+4);
+  ctx.fillText('pitwall.company',PAD,fy+4);
   ctx.textAlign='right';
   ctx.fillStyle='#444';
   ctx.fillText('AI prediction · not official',W-PAD,fy+4);
@@ -5195,7 +5195,7 @@ async function sharePrediction(){
   // Share or download
   canvas.toBlob(async blob=>{
     const file=new File([blob],'f1-prediction.png',{type:'image/png'});
-    const shareText=`🏎 F1 AI Prediction — ${race?.name||'Race'}\n🥇 ${top5[0]?.name} (${top5[0]?.winProb}%)\n🥈 ${top5[1]?.name}\n🥉 ${top5[2]?.name}\n\nhttps://f1-predictor-theta.vercel.app`;
+    const shareText=`🏎 F1 AI Prediction — ${race?.name||'Race'}\n🥇 ${top5[0]?.name} (${top5[0]?.winProb}%)\n🥈 ${top5[1]?.name}\n🥉 ${top5[2]?.name}\n\nhttps://pitwall.company`;
 
     if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
       try{ await navigator.share({title:'F1 AI Prediction',text:shareText,files:[file]}); return; }

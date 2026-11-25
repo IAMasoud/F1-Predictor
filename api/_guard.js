@@ -7,7 +7,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 // Only the app itself may call these endpoints (browsers always send Origin on POST).
-const ALLOWED_ORIGIN = /^https:\/\/f1-predictor(-theta|(-[a-z0-9-]+)?-ahmoudy365-6346s-projects)\.vercel\.app$|^http:\/\/localhost(:\d+)?$/;
+// the site's own addresses: pitwall.company (and www), the original vercel.app address and its previews, local dev
+const ALLOWED_ORIGIN = /^https:\/\/(www\.)?pitwall\.company$|^https:\/\/f1-predictor(-theta|(-[a-z0-9-]+)?-ahmoudy365-6346s-projects)\.vercel\.app$|^http:\/\/localhost(:\d+)?$/;
 
 export function isAllowedOrigin(req) {
   return ALLOWED_ORIGIN.test(req.headers.origin || '');

@@ -7,8 +7,8 @@
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
-const SITE = 'https://f1-predictor-theta.vercel.app';
-const ORIGINS = [SITE, 'http://localhost:4321'];
+const SITE = 'https://pitwall.company';
+const ORIGINS = [SITE, 'https://www.pitwall.company', 'https://f1-predictor-theta.vercel.app', 'http://localhost:4321'];
 const MAX_CV = 10 * 1024 * 1024;
 const CV_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',

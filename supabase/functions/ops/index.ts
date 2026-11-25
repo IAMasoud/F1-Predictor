@@ -6,7 +6,7 @@ import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 // The shared season calendar (season.js in the repo root).
 import { loadSeason, sessionEndMs } from '../../../season.js';
 
-const SITE = 'https://f1-predictor-theta.vercel.app';
+const SITE = 'https://pitwall.company';
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
@@ -489,7 +489,7 @@ async function buildPdf(w: Json) {
 
   // Footer
   page.drawLine({ start: { x: M, y: 52 }, end: { x: W - M, y: 52 }, thickness: 0.6, color: RULE });
-  text('Full numbers in the admin: f1-predictor-theta.vercel.app/admin', M, 36, 8.5, reg, MUTED);
+  text('Full numbers in the admin: pitwall.company/admin', M, 36, 8.5, reg, MUTED);
   const r = 'Made automatically every Monday';
   text(r, W - M - width(r, 8.5), 36, 8.5, reg, MUTED);
   return new Uint8Array(await doc.save());  // a plain ArrayBuffer copy, accepted by Blob and fetch

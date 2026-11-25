@@ -6,7 +6,7 @@
 // (t.me/<bot>?start=<code>, made in Pit Wall). Strangers get a short "private bot" reply.
 import { loadSeason } from '../../../season.js';
 
-const SITE = 'https://f1-predictor-theta.vercel.app';
+const SITE = 'https://pitwall.company';
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
