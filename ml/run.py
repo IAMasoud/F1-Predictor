@@ -12,7 +12,7 @@ ml_ingest / ml_score functions, which need ML_KEY. The site's AI is not touched.
   python ml/run.py --dry --round 21   rebuild a past weekend exactly as it was known then, print, save nothing
 Env: SB_URL, SB_ANON (public anon key), ML_KEY (secret; not needed with --dry).
 """
-import json, os, sys, time, subprocess, urllib.request, urllib.parse
+import json, os, sys, time, subprocess, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
@@ -29,7 +29,7 @@ if not SB_ANON:  # the public anon key the site itself ships (admin.html); read-
     import re
     _m = re.search(r"const SB_ANON = '([^']+)'", open(os.path.join(HERE, '..', 'admin.html')).read())
     SB_ANON = _m.group(1) if _m else ''
-ML_KEY = os.environ.get('ML_KEY', '')
+ML_KEY = os.environ.get('ML_KEY', '').strip()  # a pasted secret often carries a stray newline
 ARGS = sys.argv[1:]
 DRY = '--dry' in ARGS
 FORCE_ROUND = int(ARGS[ARGS.index('--round') + 1]) if '--round' in ARGS else None
@@ -267,7 +267,13 @@ def save(season, r, stage, lap, top10, win, info):
 def status(season):
     if DRY:
         return []
-    return rpc('ml_status', {'p_key': ML_KEY, 'p_season': season}) or []
+    try:
+        return rpc('ml_status', {'p_key': ML_KEY, 'p_season': season}) or []
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            log(f'the database refused ML_KEY (HTTP {e.code}): the GitHub secret does not match the key the database expects')
+            sys.exit(1)
+        raise
 
 
 def score_due(season, races, st, now):
