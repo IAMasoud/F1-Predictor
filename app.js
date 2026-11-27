@@ -402,7 +402,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.90';
+const APP_VERSION = 'BETA 1.91';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -691,7 +691,9 @@ async function fetchAllJolpicaRaces(kind){
   const byRound = {};
   let offset = 0, total = Infinity;
   for(let page = 0; offset < total && page < 10; page++){
-    const d = await jolpi(`/${SEASON}/${kind}.json?limit=100&offset=${offset}`, `${kind}${SEASON}_${offset}`);
+    const path = `/${SEASON}/${kind}.json?limit=100&offset=${offset}`, key = `${kind}${SEASON}_${offset}`;
+    // One failed page would drop every official result, so try it once more after a short pause.
+    const d = await jolpi(path, key).catch(() => new Promise(r => setTimeout(r, 1500)).then(() => jolpi(path, key)));
     const M = d?.MRData; if(!M) break;
     total = +M.total || 0;
     for(const r of (M.RaceTable?.Races || [])){
