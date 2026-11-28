@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // F1.com results page scraper.
 // F1's livetiming.formula1.com static endpoint is blocked (403),

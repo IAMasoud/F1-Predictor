@@ -1,7 +1,7 @@
 {
   "name": "Box Box — Team Principal",
   "short_name": "Box Box",
-  "description": "F1 team-principal management. You never drive. You decide.",
+  "description": "Motorsport team-principal management. You never drive. You decide.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

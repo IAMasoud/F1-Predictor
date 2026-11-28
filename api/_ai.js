@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // Shared AI caller (not a route — files starting with "_" are not deployed as endpoints).
 // Free providers only: Google Gemini free tier (primary), Groq free plan (optional backup).

@@ -8,7 +8,7 @@ const DIR = (process.env.ML_DATA || new URL('./data/', import.meta.url).pathname
 mkdirSync(DIR, { recursive: true })
 const NOW_YEAR = new Date().getUTCFullYear()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const UA = { 'User-Agent': 'f1-predictor-ml/1.0' }
+const UA = { 'User-Agent': 'pitwall-ml/1.0' }
 
 async function getJSON(url, tries = 6) {
   for (let k = 0; k < tries; k++) {

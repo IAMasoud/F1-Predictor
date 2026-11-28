@@ -1,4 +1,4 @@
--- F1 Predictor — database access rules (applied 2026-09-24).
+-- Pitwall — database access rules (applied 2026-09-24).
 -- The browser uses the public "anon" key, which is visible in the page source, so it
 -- may only READ predictions and sessions. Every write goes through the site's server
 -- endpoints (/api/save, /api/subscribe, /api/unsubscribe, /api/push-subscribe),

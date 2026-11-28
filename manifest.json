@@ -1,7 +1,7 @@
 {
-  "name": "F1 AI Race Predictor",
-  "short_name": "F1 Predictor",
-  "description": "AI-powered Formula 1 race predictions, live standings, and analytics",
+  "name": "Pitwall",
+  "short_name": "Pitwall",
+  "description": "Free AI race predictions, live timing and analytics. An unofficial fan project.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

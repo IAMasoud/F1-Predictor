@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 /* The Lights Out screens. Loaded after app.js and built on its data (drivers, completedRaces,
    cachedPredictions, SEASON_RACES, qualifyingGrid …): Predict with tabs, the Live timing tower,
@@ -599,9 +599,9 @@ function scrIcs(round){
   const r = scrRaces().find(x => x.round === round);
   if(!r) return;
   const z = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const evs = scrSessions(r).map(s => ['BEGIN:VEVENT', `UID:f1p-${SEASON}-${r.round}-${s.name.replace(/\s/g, '')}@f1-predictor`, `DTSTAMP:${z(Date.now())}`,
+  const evs = scrSessions(r).map(s => ['BEGIN:VEVENT', `UID:pitwall-${SEASON}-${r.round}-${s.name.replace(/\s/g, '')}@pitwall.company`, `DTSTAMP:${z(Date.now())}`,
     `DTSTART:${z(s.start)}`, `DTEND:${z(s.start + s.dur * 6e4)}`, `SUMMARY:${scrShort(r.name)} GP · ${s.name}`, `LOCATION:${r.circuit || ''}`, 'END:VEVENT'].join('\r\n'));
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//F1 Predictor//EN', 'CALSCALE:GREGORIAN', ...evs, 'END:VCALENDAR'].join('\r\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pitwall//EN', 'CALSCALE:GREGORIAN', ...evs, 'END:VCALENDAR'].join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
   a.download = `${scrShort(r.name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-gp-${SEASON}.ics`;
@@ -827,7 +827,7 @@ function scrMoreRender(){
       <a class="mo-li" href="/privacy"><span><b>Privacy</b><small>What we collect (very little) and why</small></span><span class="chev">${scrIco('chev', 18)}</span></a>
       <a class="mo-li" href="/terms"><span><b>Terms</b><small>For fun only, never betting advice</small></span><span class="chev">${scrIco('chev', 18)}</span></a>
     </div>
-    <p class="mo-foot">F1 Predictor · ${esc(APP_VERSION)}<br>An independent fan project. Not affiliated with Formula 1, the FIA or any team.</p>`;
+    <p class="mo-foot">Pitwall · ${esc(APP_VERSION)}<br>An unofficial, independent fan project. Not affiliated with Formula 1, the FIA or any team.</p>`;
 }
 
 /* ═══════════════ NAVIGATION ═══════════════ */

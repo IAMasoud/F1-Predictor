@@ -1,4 +1,4 @@
--- F1 Predictor — race-report automation, site health, weekly report (applied 2026-10-21).
+-- Pitwall — race-report automation, site health, weekly report (applied 2026-10-21).
 -- Like analytics.sql: row level security on, no policies, so only the server key can read
 -- or write these tables. Scheduled calls read the shared secret from Vault (cron_secret).
 

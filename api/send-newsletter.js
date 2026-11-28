@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // The race report email, sent to subscribers through Brevo. Needs the CRON_SECRET.
 //   ?check=1              ask Brevo whether it accepts our key; sends nothing (ops scan)
@@ -92,7 +92,7 @@ function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextR
   const head = `
     <tr><td style="padding:26px 24px 0">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-        <td style="font:700 12px ${FONT};letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; F1 PREDICTOR</td>
+        <td style="font:700 12px ${FONT};letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; PITWALL</td>
         <td align="right" style="font:500 12px ${FONT};color:#949494">${season} season · round ${race.round}</td>
       </tr></table>
       <div style="font:600 11px ${FONT};letter-spacing:2px;text-transform:uppercase;color:#ff2a2a;margin-top:26px">Race report</div>
@@ -145,7 +145,7 @@ function buildEmailHtml({ race, season, grid, prediction, accuracy, stage, nextR
     </td></tr></table>`) : '';
 
   const foot = `<tr><td style="padding:30px 24px 30px;font:500 12px/1.6 ${FONT};color:#949494">
-      You get this because you joined the F1 Predictor race reports.<br>
+      You get this because you joined the Pitwall race reports.<br>
       <a href="%%UNSUB_URL%%" style="color:#b4b4b4">Unsubscribe</a> &nbsp;·&nbsp; <a href="${APP}" style="color:#b4b4b4">Open the app</a>
     </td></tr>`;
 
@@ -186,7 +186,7 @@ function buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster = {
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;background:#070708">
       <tr><td style="padding:26px 24px 0">
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-          <td style="font:700 12px ${FONT};letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;&#9679;</span>&nbsp; F1 PREDICTOR</td>
+          <td style="font:700 12px ${FONT};letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;&#9679;</span>&nbsp; PITWALL</td>
           <td align="right" style="font:500 12px ${FONT};color:#949494">${season} season · round ${race.round}</td>
         </tr></table>
         <div style="font:600 11px ${FONT};letter-spacing:2px;text-transform:uppercase;color:#ff2a2a;margin-top:26px">&#9679; The race is live</div>
@@ -202,7 +202,7 @@ function buildLiveEmailHtml({ race, season, grid, lap, total, aiPick, roster = {
           On the Live screen, tap <b style="color:#ffffff">Ask the AI now</b> for a fresh call with the latest gaps and tyres.
         </td></tr></table></td></tr>
       <tr><td style="padding:30px 24px 30px;font:500 12px/1.6 ${FONT};color:#949494">
-        You get this because you joined the F1 Predictor race reports.<br>
+        You get this because you joined the Pitwall race reports.<br>
         <a href="%%UNSUB_URL%%" style="color:#b4b4b4">Unsubscribe</a> &nbsp;·&nbsp; <a href="${APP}" style="color:#b4b4b4">Open the app</a>
       </td></tr>
     </table>
@@ -224,7 +224,7 @@ function buildLiveNote({ race, grid, lap, total, aiPick, roster = {} }) {
     `The ${race.name} is live. ${now}`, '',
     `${ai}You can follow every lap, with tyres and pit stops, and ask the AI for a fresh call here:`, url, '',
     'Ahmed', '',
-    'You get this because you joined the F1 Predictor race reports. Unsubscribe: %%UNSUB_URL%%',
+    'You get this because you joined the Pitwall race reports. Unsubscribe: %%UNSUB_URL%%',
   ];
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#222222">
@@ -232,7 +232,7 @@ function buildLiveNote({ race, grid, lap, total, aiPick, roster = {} }) {
 <p>The ${esc(race.name)} is live. ${esc(now)}</p>
 <p>${esc(ai)}You can follow every lap, with tyres and pit stops, and ask the AI for a fresh call here:<br><a href="${url}">${APP.replace(/^https:\/\//, '')}</a></p>
 <p>Ahmed</p>
-<p style="font-size:12px;color:#888888">You get this because you joined the F1 Predictor race reports. <a href="%%UNSUB_URL%%" style="color:#888888">Unsubscribe</a></p>
+<p style="font-size:12px;color:#888888">You get this because you joined the Pitwall race reports. <a href="%%UNSUB_URL%%" style="color:#888888">Unsubscribe</a></p>
 </div></body></html>`;
   return { html, text: lines.join('\n') };
 }
@@ -334,7 +334,7 @@ export default async function handler(req, res) {
   const SB_URL = process.env.SB_URL || 'https://zeqxzyisqwemqsvspbyj.supabase.co';
   const SB_KEY = process.env.SB_SERVICE_KEY;
   const FROM_EMAIL = process.env.NEWSLETTER_FROM_EMAIL || 'ahmoudy365@gmail.com';
-  const FROM_NAME = process.env.NEWSLETTER_FROM_NAME || 'F1 Predictor';
+  const FROM_NAME = process.env.NEWSLETTER_FROM_NAME || 'Pitwall';
   if (!SB_KEY) return res.status(500).json({ error: 'SB_SERVICE_KEY not set' });
   if (!preview && !BREVO_KEY) return res.status(500).json({ error: 'BREVO_API_KEY not set' });
 

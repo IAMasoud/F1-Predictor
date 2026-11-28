@@ -33,7 +33,7 @@ ML_KEY = os.environ.get('ML_KEY', '').strip()  # a pasted secret often carries a
 ARGS = sys.argv[1:]
 DRY = '--dry' in ARGS
 FORCE_ROUND = int(ARGS[ARGS.index('--round') + 1]) if '--round' in ARGS else None
-UA = {'User-Agent': 'f1-predictor-ml/1.0'}
+UA = {'User-Agent': 'pitwall-ml/1.0'}
 MIN = 60.0
 
 

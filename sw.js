@@ -1,10 +1,10 @@
 /*
- * F1 AI Race Predictor — Service Worker
+ * Pitwall — Service Worker
  * Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Authorship canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Authorship canary: PITWALL-AM-2026-9f3c2a7b4e
  */
-const CACHE = 'f1-predictor-v91';
+const CACHE = 'pitwall-v92';
 const STATIC = [
   '/',
   '/index.html',
@@ -29,7 +29,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k.startsWith('f1-predictor-') && k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => (k.startsWith('pitwall-') || k.startsWith('f1-predictor-')) && k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -82,7 +82,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   const data = e.data ? e.data.json() : {};
   e.waitUntil(
-    self.registration.showNotification(data.title || 'F1 Race Predictor', {
+    self.registration.showNotification(data.title || 'Pitwall', {
       body: data.body || 'Race weekend update!',
       icon: data.icon || '/icons/icon-192.png',
       badge: '/icons/icon-96.png',
@@ -98,7 +98,7 @@ self.addEventListener('notificationclick', e => {
   const url = e.notification.data?.url || '/';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      const existing = list.find(c => c.url.includes('f1-predictor'));
+      const existing = list.find(c => c.url.startsWith(self.location.origin));
       if (existing) return existing.focus();
       return clients.openWindow(url);
     })

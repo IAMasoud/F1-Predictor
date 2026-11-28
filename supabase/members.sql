@@ -1,4 +1,4 @@
--- F1 Predictor — team invites and applications (applied 2026-10-21).
+-- Pitwall — team invites and applications (applied 2026-10-21).
 -- The owner makes an invite link for a role; the person fills in /join; the owner accepts or
 -- rejects in Pit Wall → Members. Like the other admin tables: row level security on, no
 -- policies, so only the server key can read or write them.

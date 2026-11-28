@@ -141,7 +141,7 @@ async function scan() {
     const [a, s] = await Promise.all([timed(`${SITE}/app.js`), timed(`${SITE}/sw.js`)]);
     if (!a.r.ok || !s.r.ok) return { ok: false, detail: `app.js ${a.r.status}, sw.js ${s.r.status}` };
     version = ((await a.r.text()).match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1] || '';
-    const cache = ((await s.r.text()).match(/CACHE\s*=\s*'f1-predictor-v(\d+)'/) || [])[1] || '';
+    const cache = ((await s.r.text()).match(/CACHE\s*=\s*'(?:pitwall|f1-predictor)-v(\d+)'/) || [])[1] || '';
     const v = (version.match(/(\d+)\.(\d+)/) || []).slice(1).join('');
     const minor = (version.match(/\d+\.(\d+)/) || [])[1] || '';
     if (!version || !cache) return { ok: false, detail: 'could not read the version' };
@@ -276,7 +276,7 @@ async function scan() {
   if (fresh.length) {
     const s = await settings();
     if (Object.values(channels(s)).some(Boolean)) {
-      alerted = await sendText(s, `F1 Predictor: today's scan found ${fresh.length} new problem${fresh.length === 1 ? '' : 's'}:\n${fresh.map(c => `- ${c.name}: ${c.detail}`).join('\n')}`, `${SITE}/admin#health`);
+      alerted = await sendText(s, `Pitwall: today's scan found ${fresh.length} new problem${fresh.length === 1 ? '' : 's'}:\n${fresh.map(c => `- ${c.name}: ${c.detail}`).join('\n')}`, `${SITE}/admin#health`);
     }
   }
   return { ok: !failed.length, failed: failed.length, version, checks, alerted };
@@ -358,8 +358,8 @@ const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-
 
 async function buildPdf(w: Json) {
   const doc = await PDFDocument.create();
-  doc.setTitle(`F1 Predictor weekly report ${w.start} to ${w.end}`);
-  doc.setAuthor('F1 Predictor');
+  doc.setTitle(`Pitwall weekly report ${w.start} to ${w.end}`);
+  doc.setAuthor('Pitwall');
   const page = doc.addPage([595.28, 841.89]);  // A4
   const H = page.getHeight(), W = page.getWidth(), M = 40;
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -374,7 +374,7 @@ async function buildPdf(w: Json) {
   // Header band with the start lights
   page.drawRectangle({ x: 0, y: H - 96, width: W, height: 96, color: NIGHT });
   for (let i = 0; i < 5; i++) page.drawCircle({ x: M + 6 + i * 16, y: H - 34, size: 5.5, color: i < 4 ? LAMP : rgb(0.17, 0.17, 0.18) });
-  text('F1 PREDICTOR', M + 92, H - 38.5, 12, bold, rgb(1, 1, 1));
+  text('PITWALL', M + 92, H - 38.5, 12, bold, rgb(1, 1, 1));
   text('WEEKLY REPORT', M, H - 70, 22, head, rgb(1, 1, 1));
   const range = `${fmtDay(w.start)} - ${fmtDay(w.end)} ${w.end.slice(0, 4)}`;
   text(range, W - M - width(range, 11, bold), H - 38.5, 11, bold, rgb(1, 1, 1));
@@ -499,7 +499,7 @@ function caption(w: Json) {
   const aiRate = w.aiAttempts ? Math.round((w.aiOk / w.aiAttempts) * 100) : null;
   const wr = w.weekRaces[0];
   return [
-    `F1 Predictor, week of ${fmtDay(w.start)} - ${fmtDay(w.end)}`,
+    `Pitwall, week of ${fmtDay(w.start)} - ${fmtDay(w.end)}`,
     `Visitors ${w.visitors} (${w.views} page views), subscribers ${w.subscribers}${w.newSubs ? ` (+${w.newSubs})` : ''}.`,
     `AI: ${aiRate == null ? 'no calls needed' : `answered ${aiRate}% of attempts`}, ${w.calls} calls saved, ${w.baselines} baseline${w.baselines === 1 ? '' : 's'}.`,
     wr ? `${wr.name}: the AI scored ${wr.score == null ? 'n/a' : `${wr.score}%`}.` : 'No race this week.',
@@ -536,9 +536,9 @@ async function weekly({ deliver = true }: { deliver?: boolean } = {}) {
       weekRaces: w.weekRaces, scans: w.scans, scansOk: w.scansOk, fixed: w.fixed.length, open: w.open.length };
     await db('weekly_reports?on_conflict=week_end', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
       body: { week_start: w.start, week_end: w.end, path, summary, created_at: new Date().toISOString() } });
-    return { ok: true, week: `${w.start}..${w.end}`, link, name: `F1-Predictor-week-${w.end}.pdf`, caption: caption(w) };
+    return { ok: true, week: `${w.start}..${w.end}`, link, name: `Pitwall-week-${w.end}.pdf`, caption: caption(w) };
   }
-  const results = Object.values(channels(s)).some(Boolean) ? await sendPdf(s, pdf, `F1-Predictor-week-${w.end}.pdf`, caption(w), link) : {};
+  const results = Object.values(channels(s)).some(Boolean) ? await sendPdf(s, pdf, `Pitwall-week-${w.end}.pdf`, caption(w), link) : {};
   const delivered = { sent: Object.entries(results).filter(([, v]) => v === 'ok').map(([k]) => k), failed: Object.fromEntries(Object.entries(results).filter(([, v]) => v !== 'ok')) };
   const summary = { visitors: w.visitors, views: w.views, subscribers: w.subscribers, newSubs: w.newSubs, aiAttempts: w.aiAttempts, aiOk: w.aiOk, calls: w.calls, baselines: w.baselines,
     weekRaces: w.weekRaces, scans: w.scans, scansOk: w.scansOk, fixed: w.fixed.length, open: w.open.length };
@@ -563,7 +563,7 @@ const LEAD = 10 * 60e3, MAX_MINUTES = 230;
 
 const github = (token: string, path: string, init: RequestInit = {}) => fetch(`https://api.github.com/repos/${REPO}/${path}`, {
   ...init,
-  headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'f1-predictor-ops', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+  headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'pitwall-ops', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
   signal: AbortSignal.timeout(10000),
 });
 function githubError(status: number, message?: string) {
@@ -618,7 +618,7 @@ async function bridge(manualMinutes?: number) {
     if (!open?.length) {
       await db('maintenance_log', { method: 'POST', prefer: 'return=minimal', body: { kind: 'found', title: 'Live timing did not start', detail: failed[0].slice(0, 300), source: 'scan', fingerprint: fp } }).catch(() => {});
       const s = await settings();
-      if (Object.values(channels(s)).some(Boolean)) await sendText(s, `F1 Predictor: live timing did not start. ${failed[0]}`, `${SITE}/admin#health`);
+      if (Object.values(channels(s)).some(Boolean)) await sendText(s, `Pitwall: live timing did not start. ${failed[0]}`, `${SITE}/admin#health`);
     }
   }
   return { ok: !failed.length, due: due.length, started, failed };
@@ -627,7 +627,7 @@ async function bridge(manualMinutes?: number) {
 async function testDelivery() {
   const s = await settings();
   if (!Object.values(channels(s)).some(Boolean)) return { ok: false, results: {}, error: 'Nothing is set up yet' };
-  const results = await sendText(s, 'F1 Predictor: test message. The weekly report will arrive here every Monday, and the daily scan writes here if something breaks.');
+  const results = await sendText(s, 'Pitwall: test message. The weekly report will arrive here every Monday, and the daily scan writes here if something breaks.');
   return { ok: Object.values(results).some(v => v === 'ok'), results };
 }
 

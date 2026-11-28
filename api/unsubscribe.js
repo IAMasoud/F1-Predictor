@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // Unsubscribe from the race-report email.
 //  • GET/POST ?id=…&t=…  — the signed link in every email (POST = one-click from mail apps)
@@ -10,7 +10,7 @@ import { isAllowedOrigin, clientIp, rateLimited, sb, validUnsubToken } from './_
 
 const page = (title, msg) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
 <body style="margin:0;background:#0d0d0d;color:#eee;font-family:-apple-system,Segoe UI,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center">
-<div style="max-width:420px;padding:32px;text-align:center"><div style="color:#E10600;font-weight:800;font-size:28px;letter-spacing:1px">F1 PREDICTOR</div>
+<div style="max-width:420px;padding:32px;text-align:center"><div style="color:#ffffff;font-weight:800;font-style:italic;font-size:28px;letter-spacing:1px"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; PITWALL</div>
 <h1 style="font-size:20px;margin:18px 0 8px">${title}</h1><p style="color:#aaa;line-height:1.5">${msg}</p>
 <a href="/" style="display:inline-block;margin-top:16px;color:#fff;background:#E10600;padding:10px 22px;border-radius:6px;text-decoration:none;font-weight:700">Open the app</a></div></body></html>`;
 

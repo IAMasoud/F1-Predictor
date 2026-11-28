@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 /* ── AI Thinking Steps ── */
 const AI_STEPS = [
@@ -219,7 +219,7 @@ function initSeason(){
       races.forEach(r => { if(r.of1) OF1_LOC[r.circuitId] = r.of1; });
       upcomingRaces = [...BASE_UPCOMING];
       document.querySelectorAll('[data-season]').forEach(el => { el.textContent = SEASON; });
-      document.title = `F1 AI Race Predictor ${SEASON}`;
+      document.title = `Pitwall · ${SEASON} AI race predictions`;
       if(source !== 'jolpica') console.warn('[season] official schedule unavailable — using the built-in calendar');
       window.scrOnData?.();
     }catch(e){ console.warn('[season] using the built-in calendar:', e.message); }
@@ -402,7 +402,7 @@ let sprintQualiGrid = [];   // sprint qualifying grid
 
 // App version shown in the header pill. Bump alongside the sw.js CACHE version
 // so the visible label never goes stale (it was hardcoded "1.47" before).
-const APP_VERSION = 'BETA 1.91';
+const APP_VERSION = 'BETA 1.92';
 
 /* ═══════════════════════════════════════════════
    USAGE COUNTS — anonymous, no cookies, nothing stored on the device.
@@ -466,7 +466,6 @@ let qualiSessionLive   = false;
 let qualiSessKey       = null;
 let liveRaceInterval   = null;
 let liveRaceSessKey    = null;
-let driverHeadshots    = {};
 let raceWeatherData    = null; // {rain, hi, lo, icon} for race day
 
 /* ═══════════════════════════════════════════════
@@ -3071,7 +3070,6 @@ async function autoFetchSessions(){
     }
 
     currentMeetingKey = meeting.meeting_key;
-    fetchDriverHeadshots(meeting.meeting_key); // load headshots in background
     fetchPracticeResults(meeting.meeting_key); // load practice results in background
     const sessions = await getOf1Sessions(meeting.meeting_key);
     const isSprint = !!race?.sprint;
@@ -4235,19 +4233,6 @@ function initTheme(){
   }catch(e){}
 }
 
-/* ═══════════════════════════════════════════════
-   DRIVER HEADSHOTS — from OpenF1
-   ═══════════════════════════════════════════════ */
-async function fetchDriverHeadshots(meetingKey){
-  if(!meetingKey) return;
-  try{
-    const data = await of1Fetch(`${OPENF1}/drivers?meeting_key=${meetingKey}`);
-    (data||[]).forEach(d=>{
-      if(d.name_acronym && d.headshot_url)
-        driverHeadshots[d.name_acronym.toUpperCase()] = d.headshot_url;
-    });
-  }catch(e){ console.warn('Headshots:', e.message); }
-}
 
 /* ═══════════════════════════════════════════════
    DRIVER PROFILE CARD
@@ -4256,10 +4241,8 @@ function openDriverCard(driverId){
   const drv = drivers.find(x=>x.driverId===driverId);
   if(!drv) return;
   const col = teamCol(drv.team);
-  const photo = driverHeadshots[drv.abbr];
-  const photoHtml = photo
-    ? `<img class="drv-photo" src="${photo}" style="border-color:${col}" onerror="this.outerHTML='<div class=drv-photo-av style=background:${col}22;border-color:${col};color:${col}>${drv.abbr}</div>'">`
-    : `<div class="drv-photo-av" style="background:${col}22;border-color:${col};color:${col}">${drv.abbr}</div>`;
+  // no driver photos: the official headshots are copyrighted, so every driver gets an initials badge
+  const photoHtml = `<div class="drv-photo-av" style="background:${col}22;border-color:${col};color:${col}">${drv.abbr}</div>`;
 
   // Season stats
   const fins = [];
@@ -5117,13 +5100,14 @@ async function sharePrediction(){
   // Red top stripe
   ctx.fillStyle='#E10600'; ctx.fillRect(0,0,W,3);
 
-  // Header — F1 logo area
-  ctx.fillStyle='#E10600';
-  ctx.font='bold 18px "Barlow Condensed",sans-serif';
-  ctx.fillText('F1',PAD,PAD+22);
+  // Header: the Pitwall mark (four start lights on, the fifth still dark) + name
+  for(let i=0;i<5;i++){
+    ctx.beginPath(); ctx.arc(PAD+4+i*10,PAD+16,i<4?3.6:3,0,Math.PI*2);
+    if(i<4){ ctx.fillStyle='#FF2A2A'; ctx.fill(); } else { ctx.strokeStyle='#3a3a3e'; ctx.lineWidth=1.2; ctx.stroke(); }
+  }
   ctx.fillStyle='#ffffff';
-  ctx.font='bold 13px "Barlow Condensed",sans-serif';
-  ctx.fillText('AI RACE PREDICTOR',PAD+28,PAD+22);
+  ctx.font='italic 800 18px "Barlow Condensed",sans-serif';
+  ctx.fillText('PITWALL',PAD+56,PAD+22);
 
   // Race name
   ctx.fillStyle='#888';
@@ -5196,16 +5180,16 @@ async function sharePrediction(){
 
   // Share or download
   canvas.toBlob(async blob=>{
-    const file=new File([blob],'f1-prediction.png',{type:'image/png'});
-    const shareText=`🏎 F1 AI Prediction — ${race?.name||'Race'}\n🥇 ${top5[0]?.name} (${top5[0]?.winProb}%)\n🥈 ${top5[1]?.name}\n🥉 ${top5[2]?.name}\n\nhttps://pitwall.company`;
+    const file=new File([blob],'pitwall-prediction.png',{type:'image/png'});
+    const shareText=`🏎 Pitwall AI prediction — ${race?.name||'Race'}\n🥇 ${top5[0]?.name} (${top5[0]?.winProb}%)\n🥈 ${top5[1]?.name}\n🥉 ${top5[2]?.name}\n\nhttps://pitwall.company`;
 
     if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-      try{ await navigator.share({title:'F1 AI Prediction',text:shareText,files:[file]}); return; }
+      try{ await navigator.share({title:'Pitwall AI prediction',text:shareText,files:[file]}); return; }
       catch(e){ if(e.name==='AbortError') return; }
     }
     // Fallback: download image
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download='f1-prediction.png'; a.click();
+    const a=document.createElement('a'); a.href=url; a.download='pitwall-prediction.png'; a.click();
     URL.revokeObjectURL(url);
     showToast('Prediction card saved!','success');
   },'image/png');

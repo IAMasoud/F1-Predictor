@@ -127,7 +127,7 @@ export async function handle(req: Request): Promise<Response> {
     if (!('invite' in found)) return reply({ error: found.error }, found.status);
     const invite = found.invite!;
 
-    if (action === 'check') return reply({ ok: true, role: invite.role, expires_at: invite.expires_at, inviter: 'Ahmed Masoud', team: 'F1 Predictor' });
+    if (action === 'check') return reply({ ok: true, role: invite.role, expires_at: invite.expires_at, inviter: 'Ahmed Masoud', team: 'Pitwall' });
 
     if (action === 'upload') {
       const ext = CV_TYPES[String(b.type || '')];

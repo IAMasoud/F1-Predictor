@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // The Pit Wall admin API. Every request needs a Supabase sign-in token for an admin account
 // (app_metadata.role "admin", or the owner); data is read and written with the server key.
@@ -220,24 +220,24 @@ function decisionEmail({ accepted, name, role, note }) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const body = accepted
     ? [`Congrats, and welcome to the team!`,
-       `I'm really happy to tell you that you've been accepted to join F1 Predictor as ${role}.`,
+       `I'm really happy to tell you that you've been accepted to join Pitwall as ${role}.`,
        `You can sign in to Pit Wall, our team dashboard, with the email and password you chose when you applied.`]
-    : [`Thank you for applying to join F1 Predictor as ${role}, and for the time you put into your application.`,
+    : [`Thank you for applying to join Pitwall as ${role}, and for the time you put into your application.`,
        `I'm really sorry, but we couldn't accept you this time.`,
        `I wish you all the best, and I hope our paths cross again.`];
   const extra = String(note || '').trim().slice(0, 1500);
   const P = t => `<p style="margin:0 0 14px;color:#d6d6d6;font:400 15px/1.6 Arial,Helvetica,sans-serif">${escHtml(t).replace(/\n/g, '<br>')}</p>`;
   const html = `<div style="background:#070708;padding:28px 12px">
   <div style="max-width:520px;margin:0 auto;background:#111113;border-radius:12px;padding:28px 26px">
-    <div style="font:700 12px Arial,Helvetica,sans-serif;letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; F1 PREDICTOR</div>
+    <div style="font:700 12px Arial,Helvetica,sans-serif;letter-spacing:3px;color:#ffffff"><span style="color:#ff2a2a">&#9679;&#9679;&#9679;&#9679;</span><span style="color:#3a3a3e">&#9679;</span>&nbsp; PITWALL</div>
     <h1 style="margin:22px 0 16px;font:italic 800 28px/1.1 'Arial Narrow',Arial,sans-serif;text-transform:uppercase;color:#ffffff">${accepted ? 'Welcome to the team' : 'Thank you for applying'}</h1>
     ${P(`Hi ${first},`)}${body.map(P).join('')}${extra ? P(extra) : ''}
     ${accepted ? `<a href="${SITE}/admin" style="display:inline-block;margin:4px 0 18px;background:#e01e1e;color:#ffffff;text-decoration:none;font:700 14px Arial,Helvetica,sans-serif;letter-spacing:.5px;text-transform:uppercase;padding:12px 22px;border-radius:8px">Sign in to Pit Wall</a>` : ''}
     <p style="margin:8px 0 0;color:#ffffff;font:700 15px Arial,Helvetica,sans-serif">Ahmed Masoud</p>
-    <p style="margin:2px 0 0;color:#949494;font:400 13px Arial,Helvetica,sans-serif">Founder &amp; CEO, F1 Predictor</p>
+    <p style="margin:2px 0 0;color:#949494;font:400 13px Arial,Helvetica,sans-serif">Founder &amp; CEO, Pitwall</p>
   </div></div>`;
-  const text = [`Hi ${first},`, ...body, ...(extra ? [extra] : []), ...(accepted ? [`Sign in: ${SITE}/admin`] : [])].join('\n\n') + '\n\nAhmed Masoud\nFounder & CEO, F1 Predictor';
-  return { subject: accepted ? `Welcome to the F1 Predictor team, ${first}` : 'Your F1 Predictor application', html, text };
+  const text = [`Hi ${first},`, ...body, ...(extra ? [extra] : []), ...(accepted ? [`Sign in: ${SITE}/admin`] : [])].join('\n\n') + '\n\nAhmed Masoud\nFounder & CEO, Pitwall';
+  return { subject: accepted ? `Welcome to the Pitwall team, ${first}` : 'Your Pitwall application', html, text };
 }
 async function sendMail({ to, subject, html, text }) {
   const key = process.env.BREVO_API_KEY;

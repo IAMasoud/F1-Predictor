@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Pit Wall · F1 Predictor</title>
+<title>Pit Wall · Pitwall admin</title>
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /*
-   * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+   * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
    * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
    */
   :root,[data-theme="dark"]{
@@ -179,7 +179,7 @@
   <div class="login">
     <svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg>
     <h1 id="loginTitle">Pit Wall</h1>
-    <p id="loginText">The F1 Predictor admin. Sign in with your email and password.</p>
+    <p id="loginText">The Pitwall admin. Sign in with your email and password.</p>
     <form id="signInForm" novalidate>
       <label class="lab" for="email">Email</label>
       <input class="field" id="email" type="email" autocomplete="username" inputmode="email" required>
@@ -209,7 +209,7 @@
 
 <div id="app">
   <aside>
-    <div class="brand"><svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg><div><b>PIT WALL</b><small>F1 Predictor admin</small></div></div>
+    <div class="brand"><svg width="34" height="14" viewBox="0 0 34 14" aria-hidden="true"><g fill="#ff2a2a"><circle cx="3" cy="7" r="3"/><circle cx="10" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="24" cy="7" r="3"/></g><circle cx="31" cy="7" r="2.4" fill="none" stroke="#3a3a3e" stroke-width="1.2"/></svg><div><b>PIT WALL</b><small>Pitwall admin</small></div></div>
     <nav class="side" id="nav"></nav>
     <div class="me">
       <div class="who"><b id="meName"></b><span class="badge" id="meTitle"></span></div>
@@ -225,7 +225,7 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script>
-/* Pit Wall — the F1 Predictor admin page. Talks to /api/admin with a Supabase sign-in token. */
+/* Pit Wall — the Pitwall admin page. Talks to /api/admin with a Supabase sign-in token. */
 const SB_URL = 'https://zeqxzyisqwemqsvspbyj.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InplcXh6eWlzcXdlbXFzdnNwYnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODM0MjUsImV4cCI6MjA5MzU1OTQyNX0.uDzYrylvgomvGiSH886LJ2zIO14VZpR-f12vWRzW2M0';
 const HOME_PAGE = 'overview';  // first page after signing in
@@ -264,7 +264,7 @@ function loginView(v){
   $('loginTitle').textContent = v === 'reset' ? 'New password' : v === 'forgot' ? 'Forgot password' : 'Pit Wall';
   $('loginText').textContent = v === 'reset' ? 'Choose a new password for the admin.'
     : v === 'forgot' ? 'Enter your admin email. We’ll send a link to choose a new password.'
-    : 'The F1 Predictor admin. Sign in with your email and password.';
+    : 'The Pitwall admin. Sign in with your email and password.';
   loginMsg('');
   const first = { signin:'email', forgot:'fEmail', reset:'newPw' }[v]; setTimeout(() => $(first)?.focus(), 30);
 }
@@ -885,7 +885,7 @@ function inviteDialog(){
     const btn = e.submitter || e.target.querySelector('[type=submit]'); btn.disabled = true;
     try{
       const r = await api({ action:'invite_create' }, { role });
-      const msg = `Hi! I'd like you to join the F1 Predictor team as ${r.role}. Fill in your details here: ${r.link}`;
+      const msg = `Hi! I'd like you to join the Pitwall team as ${r.role}. Fill in your details here: ${r.link}`;
       body.innerHTML = `<h2 style="font:600 17px Barlow">Invite link for ${esc(r.role)}</h2>
         <p class="help">Send this link to the person. It works once, until ${shortDate(r.expires_at)}. When they apply, it shows up under <b>Members</b>.</p>
         <input class="field" id="invLink" readonly value="${esc(r.link)}" style="font:500 13px Barlow;margin-top:12px" aria-label="Invite link">

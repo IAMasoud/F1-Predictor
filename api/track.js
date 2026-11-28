@@ -1,7 +1,7 @@
 /*
- * F1 AI Race Predictor — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
+ * Pitwall — Copyright (c) 2026 Ahmed Masoud. All Rights Reserved.
  * Proprietary. Unauthorized copying or reuse prohibited. See LICENSE.
- * Canary: F1PRED-AM-2026-9f3c2a7b4e
+ * Canary: PITWALL-AM-2026-9f3c2a7b4e
  */
 // Anonymous usage events for the admin dashboard. No cookies and nothing stored on the
 // device: a visitor is a hash of IP + browser + a salt that changes every day, so they
@@ -45,7 +45,7 @@ function visitorHash(ip, ua) {
 function refDomain(ref) {
   try {
     const h = new URL(ref).hostname.replace(/^www\./, '');
-    return h && !/f1-predictor/.test(h) ? h.slice(0, 80) : null;
+    return h && !/f1-predictor|pitwall\.company/.test(h) ? h.slice(0, 80) : null;
   } catch { return null; }
 }
 

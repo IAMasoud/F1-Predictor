@@ -1,4 +1,4 @@
--- F1 Predictor — analytics + admin tables (applied 2026-10-20).
+-- Pitwall — analytics + admin tables (applied 2026-10-20).
 -- Only the server (service key) can read or write these: row level security is on and
 -- there are no policies, so the public "anon" key sees nothing.
 

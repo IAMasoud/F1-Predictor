@@ -173,7 +173,7 @@ async function cmdStatus(): Promise<Out> {
   const c = await calls(race);
   const scan = scans?.[0];
   return { text: [
-    'F1 Predictor right now',
+    'Pitwall right now',
     `Site scan: ${scan ? `${scan.ok ? 'all clear' : `${scan.failed} problem${scan.failed === 1 ? '' : 's'}`}, ${ago(scan.ts)}` : 'not run yet'}`,
     `Open problems: ${open?.length || 0}`,
     live ? `Live now: ${live.race.name}, ${live.name}` : next ? `Next: ${next.race.name}, ${next.name}, ${when(next.start)} Egypt time (in ${span(next.start - now)})` : 'No more sessions this season',
@@ -268,7 +268,7 @@ async function tg(token: string, method: string, payload: Json | FormData) {
 const KEYBOARD = { keyboard: [[{ text: 'Scan now' }, { text: 'Weekly report' }], [{ text: 'Status' }, { text: 'This weekend' }],
   [{ text: 'Visitors' }, { text: 'Retry the AI' }], [{ text: 'Race report' }, { text: 'Help' }]], resize_keyboard: true, is_persistent: true };
 const NO_KEYBOARD = { remove_keyboard: true };
-const PRIVATE = 'This is the private bot of the F1 Predictor team. Team members connect it in Pit Wall: Assistant, then Connect Telegram.';
+const PRIVATE = 'This is the private bot of the Pitwall team. Team members connect it in Pit Wall: Assistant, then Connect Telegram.';
 
 async function onTelegram(update: Json) {
   const msg = update.message;
